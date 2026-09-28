@@ -257,13 +257,16 @@ export default function GalleryPage() {
       {/* Gallery Nav Bar */}
       <div className="gallery-bar" id="gallery-section">
         <div className="gallery-bar-top">
-          <div>
-            <h2 className="gallery-bar-title">{event?.name || '...'}</h2>
-            {(event?.editionName || event?.description) && (
-              <div style={{ fontFamily: 'var(--font-ui)', fontSize: '0.7rem', color: 'var(--color-dark-grey)', marginTop: 2, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                {event.editionName || event.description}
-              </div>
-            )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <img src="/logo_blue_croped.png" alt="F2 Fintech" style={{ height: '40px', objectFit: 'contain' }} />
+            <div>
+              <h2 className="gallery-bar-title">{event?.name || '...'}</h2>
+              {(event?.editionName || event?.description) && (
+                <div style={{ fontFamily: 'var(--font-ui)', fontSize: '0.7rem', color: 'var(--color-dark-grey)', marginTop: 2, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                  {event.editionName || event.description}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="gallery-bar-counts">

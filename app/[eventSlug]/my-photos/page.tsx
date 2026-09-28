@@ -81,22 +81,22 @@ export default function MyPhotosPage() {
     <div style={{ minHeight: '100vh', background: 'var(--color-white)' }}>
       {/* Mini header */}
       <div style={{
-        background: 'var(--color-near-black)',
+        background: 'var(--color-white)',
+        borderBottom: '1px solid var(--color-light-grey)',
         padding: '16px 24px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
       }}>
-        <Link
-          href={`/${eventSlug}/gallery`}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(255,255,255,0.6)', fontFamily: 'var(--font-ui)', fontSize: '0.8rem', textDecoration: 'none' }}
-        >
-          ← Back to Gallery
-        </Link>
-        <p style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', color: 'white', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
-          {eventSlug.replace(/-/g, ' ')}
-        </p>
-        <div style={{ width: 100 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <img src="/logo_blue_croped.png" alt="F2 Fintech" style={{ height: '36px', objectFit: 'contain' }} />
+          <Link
+            href={`/${eventSlug}/gallery`}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-dark-grey)', fontFamily: 'var(--font-ui)', fontSize: '0.8rem', textDecoration: 'none' }}
+          >
+            ← Back to Gallery
+          </Link>
+        </div>
       </div>
 
       {/* Form or Results */}
