@@ -65,23 +65,30 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { eventId, name, email } = body;
 
-    if (!eventId || !name || !email) {
+    if (!eventId || !name) {
       return NextResponse.json(
-        { error: 'eventId, name and email are required.' },
+        { error: 'eventId and name are required.' },
         { status: 400 }
       );
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedEmail = email ? email.toLowerCase().trim() : undefined;
 
-    // Upsert: find or create attendee for this event + email
-    let attendee = await Attendee.findOne({ eventId, normalizedEmail });
+    // Upsert: find or create attendee for this event + email (or name if no email)
+    let query: any = { eventId };
+    if (normalizedEmail) {
+      query.normalizedEmail = normalizedEmail;
+    } else {
+      query.name = name.trim();
+    }
+
+    let attendee = await Attendee.findOne(query);
     if (!attendee) {
       attendee = await Attendee.create({
         eventId,
         name: name.trim(),
-        email: email.trim(),
-        normalizedEmail,
+        ...(email && { email: email.trim() }),
+        ...(normalizedEmail && { normalizedEmail }),
       });
     }
 

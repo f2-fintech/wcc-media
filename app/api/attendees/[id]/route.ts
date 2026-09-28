@@ -20,9 +20,14 @@ export async function PATCH(
 
     const updateData: Record<string, string> = {};
     if (name) updateData.name = name.trim();
-    if (email) {
-      updateData.email = email.trim();
-      updateData.normalizedEmail = email.toLowerCase().trim();
+    if (email !== undefined) {
+      if (email.trim() === '') {
+        updateData.email = '';
+        updateData.normalizedEmail = '';
+      } else {
+        updateData.email = email.trim();
+        updateData.normalizedEmail = email.toLowerCase().trim();
+      }
     }
     if (downloadPin !== undefined) updateData.downloadPin = downloadPin.trim();
 

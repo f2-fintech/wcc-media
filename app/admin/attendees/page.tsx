@@ -54,7 +54,7 @@ export default function AttendeesPage() {
   async function handleSave() {
     if (!editingAttendee) return;
     setError('');
-    if (!editForm.name.trim() || !editForm.email.trim()) { setError('Name and email are required.'); return; }
+    if (!editForm.name.trim()) { setError('Name is required.'); return; }
     setSaving(true);
     try {
       const res = await fetch(`/api/attendees/${editingAttendee._id}`, {

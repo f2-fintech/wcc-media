@@ -3,8 +3,8 @@ import mongoose, { Document, Schema, Model, Types } from 'mongoose';
 export interface IAttendee extends Document {
   eventId: Types.ObjectId;
   name: string;
-  email: string;
-  normalizedEmail: string;
+  email?: string;
+  normalizedEmail?: string;
   downloadPin?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -24,12 +24,10 @@ const AttendeeSchema = new Schema<IAttendee>(
     },
     email: {
       type: String,
-      required: true,
       trim: true,
     },
     normalizedEmail: {
       type: String,
-      required: true,
       lowercase: true,
       trim: true,
     },
