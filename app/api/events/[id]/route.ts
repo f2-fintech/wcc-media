@@ -39,7 +39,7 @@ export async function PATCH(
 
   try {
     const body = await request.json();
-    const { name, slug, description, active, downloadPin } = body;
+    const { name, slug, description, active } = body;
 
     if (slug) {
       const existing = await Event.findOne({
@@ -60,7 +60,6 @@ export async function PATCH(
         ...(name && { name: name.trim() }),
         ...(slug && { slug: slug.toLowerCase().trim() }),
         ...(description !== undefined && { description: description.trim() }),
-        ...(downloadPin !== undefined && { downloadPin: downloadPin.trim() }),
         ...(active !== undefined && { active }),
       },
       { new: true }

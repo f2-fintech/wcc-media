@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, slug, description, active, downloadPin } = body;
+    const { name, slug, description, active } = body;
 
     if (!name || !slug) {
       return NextResponse.json({ error: 'Name and slug are required.' }, { status: 400 });
@@ -55,7 +55,6 @@ export async function POST(request: NextRequest) {
       name: name.trim(),
       slug: slug.toLowerCase().trim(),
       description: description?.trim(),
-      downloadPin: downloadPin?.trim(),
       active: active !== undefined ? active : true,
     });
 
