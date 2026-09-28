@@ -56,7 +56,7 @@ export default function MediaUploadPage() {
   async function handleUpload() {
     setError('');
     if (!selectedEvent || !selectedEdition) { setError('Select an event and edition.'); return; }
-    if (!attendeeName.trim() || !attendeeEmail.trim()) { setError('Attendee name and email are required.'); return; }
+    if (!attendeeName.trim()) { setError('Attendee name is required.'); return; }
     if (files.length === 0) { setError('Select at least one file.'); return; }
     if (files.every(f => f.status === 'done')) { setError('All files already uploaded.'); return; }
 
@@ -205,7 +205,7 @@ export default function MediaUploadPage() {
                   <input id="upload-attendee-name" className="form-input" placeholder="Dr. John Doe" value={attendeeName} onChange={e => setAttendeeName(e.target.value)} />
                 </div>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Attendee Email *</label>
+                  <label className="form-label">Attendee Email (Optional)</label>
                   <input id="upload-attendee-email" className="form-input" type="email" placeholder="john@example.com" value={attendeeEmail} onChange={e => setAttendeeEmail(e.target.value)} />
                 </div>
               </div>
