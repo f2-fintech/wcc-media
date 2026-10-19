@@ -59,10 +59,14 @@ export async function getAuthenticatedAdmin(): Promise<AdminTokenPayload | null>
 /**
  * Set the admin auth cookie on a response.
  */
-export function setAuthCookie(response: NextResponse, token: string): NextResponse {
+export function setAuthCookie(
+  response: NextResponse,
+  token: string,
+  isSecure: boolean = process.env.NODE_ENV === 'production'
+): NextResponse {
   response.cookies.set(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isSecure,
     sameSite: 'lax',
     maxAge: 8 * 60 * 60, // 8 hours
     path: '/',
@@ -73,10 +77,13 @@ export function setAuthCookie(response: NextResponse, token: string): NextRespon
 /**
  * Clear the admin auth cookie.
  */
-export function clearAuthCookie(response: NextResponse): NextResponse {
+export function clearAuthCookie(
+  response: NextResponse,
+  isSecure: boolean = process.env.NODE_ENV === 'production'
+): NextResponse {
   response.cookies.set(COOKIE_NAME, '', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isSecure,
     sameSite: 'lax',
     maxAge: 0,
     path: '/',
