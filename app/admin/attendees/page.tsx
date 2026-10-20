@@ -54,7 +54,7 @@ export default function AttendeesPage() {
   async function handleSave() {
     if (!editingAttendee) return;
     setError('');
-    if (!editForm.name.trim()) { setError('Name is required.'); return; }
+    if (!editForm.name.trim()) { setError('Folder name is required.'); return; }
     setSaving(true);
     try {
       const res = await fetch(`/api/attendees/${editingAttendee._id}`, {
@@ -71,7 +71,7 @@ export default function AttendeesPage() {
   }
 
   async function handleDelete(a: Attendee) {
-    if (!confirm(`Delete attendee "${a.name}"?`)) return;
+    if (!confirm(`Delete folder "${a.name}"?`)) return;
     await fetch(`/api/attendees/${a._id}`, { method: 'DELETE' });
     loadAttendees(pagination.page);
   }
@@ -79,7 +79,7 @@ export default function AttendeesPage() {
   return (
     <>
       <div className="admin-topbar">
-        <h2 className="admin-topbar-title">Attendees</h2>
+        <h2 className="admin-topbar-title">Media Folders</h2>
         <p style={{ fontFamily: 'var(--font-ui)', fontSize: '0.8rem', color: 'var(--color-dark-grey)' }}>
           {pagination.total.toLocaleString()} total
         </p>
@@ -101,7 +101,7 @@ export default function AttendeesPage() {
                 <input
                   id="attendee-search"
                   className="search-input"
-                  placeholder="Search by name or email..."
+                  placeholder="Search by folder name or email..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   style={{ minWidth: 280 }}
@@ -116,15 +116,15 @@ export default function AttendeesPage() {
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-dark-grey)', fontFamily: 'var(--font-ui)' }}>Loading...</div>
           ) : attendees.length === 0 ? (
             <div className="empty-state">
-              <h3>No attendees found</h3>
-              <p>Attendees are created automatically when media is uploaded.</p>
+              <h3>No folders found</h3>
+              <p>Folders are created automatically when media is uploaded.</p>
             </div>
           ) : (
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Email</th>
+                  <th>Folder Name</th>
+                  <th>Contact Email</th>
                   <th>Media</th>
                   <th>Added</th>
                   <th>Actions</th>
@@ -166,23 +166,23 @@ export default function AttendeesPage() {
         <div className="modal-overlay" onClick={() => setEditingAttendee(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">Edit Attendee</h3>
+              <h3 className="modal-title">Edit Folder</h3>
               <button className="btn btn-ghost btn-icon" onClick={() => setEditingAttendee(null)}>✕</button>
             </div>
             <div className="modal-body">
               <div className="form-group">
-                <label className="form-label">Full Name</label>
+                <label className="form-label">Folder Name</label>
                 <input className="form-input" value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
               </div>
               <div className="form-group">
-                <label className="form-label">Email Address</label>
+                <label className="form-label">Contact Email (Optional)</label>
                 <input className="form-input" type="email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} />
               </div>
               <div className="form-group">
                 <label className="form-label">Download PIN (Optional)</label>
                 <input className="form-input" placeholder="e.g. 1234" value={editForm.downloadPin} onChange={e => setEditForm(f => ({ ...f, downloadPin: e.target.value }))} />
                 <p style={{ fontSize: '0.75rem', color: 'var(--color-dark-grey)', marginTop: 4, fontFamily: 'var(--font-ui)' }}>
-                  Require users to enter this PIN to download their ZIP file.
+                  Require users to enter this PIN to download this folder&apos;s ZIP file.
                 </p>
               </div>
               {error && <p className="error-text">{error}</p>}

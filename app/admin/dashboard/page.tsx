@@ -19,7 +19,7 @@ const STAT_CONFIG = [
   { key: 'totalMedia', label: 'Total Media', icon: 'photo', color: '#6a2d6a' },
   { key: 'totalPhotos', label: 'Photos', icon: 'image', color: '#2d4a6a' },
   { key: 'totalVideos', label: 'Videos', icon: 'video', color: '#6a4a2d' },
-  { key: 'totalAttendees', label: 'Attendees', icon: 'users', color: '#2d6a4a' },
+  { key: 'totalAttendees', label: 'Folders', icon: 'folder', color: '#2d6a4a' },
 ] as const;
 
 function StatIcon({ name, color }: { name: string; color: string }) {
@@ -63,6 +63,11 @@ function StatIcon({ name, color }: { name: string; color: string }) {
         <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
       </svg>
     ),
+    folder: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      </svg>
+    ),
   };
 
   return (
@@ -78,7 +83,7 @@ function StatIcon({ name, color }: { name: string; color: string }) {
 const QUICK_LINKS = [
   { href: '/admin/events', label: 'Manage Events', desc: 'Create and configure events' },
   { href: '/admin/media/upload', label: 'Upload Media', desc: 'Add photos and videos' },
-  { href: '/admin/attendees', label: 'View Attendees', desc: 'Manage attendee records' },
+  { href: '/admin/attendees', label: 'Manage Folders', desc: 'Organize and view media folders' },
   { href: '/admin/banner', label: 'Update Banner', desc: 'Change event hero images' },
 ];
 

@@ -36,6 +36,8 @@ export default function MediaUploadPage() {
     });
   }, []);
 
+  const [existingFolders, setExistingFolders] = useState<{ _id: string; name: string }[]>([]);
+
   useEffect(() => {
     if (!selectedEvent) return;
     fetch(`/api/editions?eventId=${selectedEvent}`).then(r => r.json()).then(data => {
@@ -43,6 +45,9 @@ export default function MediaUploadPage() {
       setEditions(active);
       if (active.length) setSelectedEdition(active[0]._id);
     });
+    fetch(`/api/attendees?eventId=${selectedEvent}&limit=200`).then(r => r.json()).then(data => {
+      setExistingFolders(data.attendees || []);
+    }).catch(() => {});
   }, [selectedEvent]);
 
   function addFiles(newFiles: FileList | null) {
@@ -56,7 +61,7 @@ export default function MediaUploadPage() {
   async function handleUpload() {
     setError('');
     if (!selectedEvent || !selectedEdition) { setError('Select an event and edition.'); return; }
-    if (!attendeeName.trim()) { setError('Attendee name is required.'); return; }
+    if (!attendeeName.trim()) { setError('Folder name is required.'); return; }
     if (files.length === 0) { setError('Select at least one file.'); return; }
     if (files.every(f => f.status === 'done')) { setError('All files already uploaded.'); return; }
 
@@ -64,14 +69,14 @@ export default function MediaUploadPage() {
     let successCnt = 0;
 
     try {
-      // 1. Find or create attendee
+      // 1. Find or create folder
       const attendeeRes = await fetch('/api/attendees', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ eventId: selectedEvent, name: attendeeName.trim(), email: attendeeEmail.trim() }),
       });
       const attendeeData = await attendeeRes.json();
-      if (!attendeeRes.ok) { setError(attendeeData.error || 'Failed to create attendee.'); setUploading(false); return; }
+      if (!attendeeRes.ok) { setError(attendeeData.error || 'Failed to create folder.'); setUploading(false); return; }
       const attendeeId = attendeeData.attendee._id;
 
       // 2. Get presigned URLs
@@ -198,15 +203,34 @@ export default function MediaUploadPage() {
                 </div>
               </div>
 
-              {/* Attendee */}
+              {/* Folder Name & Optional Email */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Attendee Name *</label>
-                  <input id="upload-attendee-name" className="form-input" placeholder="Dr. John Doe" value={attendeeName} onChange={e => setAttendeeName(e.target.value)} />
+                  <label className="form-label">Folder Name *</label>
+                  <input
+                    id="upload-attendee-name"
+                    className="form-input"
+                    placeholder="e.g. Stage Highlights, Dr. Anas, Awards..."
+                    value={attendeeName}
+                    onChange={e => setAttendeeName(e.target.value)}
+                    list="existing-folders-list"
+                  />
+                  <datalist id="existing-folders-list">
+                    {existingFolders.map(f => (
+                      <option key={f._id} value={f.name} />
+                    ))}
+                  </datalist>
                 </div>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Attendee Email (Optional)</label>
-                  <input id="upload-attendee-email" className="form-input" type="email" placeholder="john@example.com" value={attendeeEmail} onChange={e => setAttendeeEmail(e.target.value)} />
+                  <label className="form-label">Contact Email (Optional)</label>
+                  <input
+                    id="upload-attendee-email"
+                    className="form-input"
+                    type="email"
+                    placeholder="contact@example.com (for private PIN)"
+                    value={attendeeEmail}
+                    onChange={e => setAttendeeEmail(e.target.value)}
+                  />
                 </div>
               </div>
 

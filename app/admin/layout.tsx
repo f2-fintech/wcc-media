@@ -3,8 +3,8 @@ import AdminShell from './AdminShell';
 
 export const metadata: Metadata = {
   title: {
-    default: 'Admin Portal',
-    template: '%s | Admin',
+    default: '1F2 Admin Console',
+    template: '%s | 1F2 Admin',
   },
   robots: 'noindex,nofollow',
 };

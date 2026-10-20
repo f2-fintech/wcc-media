@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import JSZip from 'jszip';
+import { ChevronDown, Check, Layers } from 'lucide-react';
+import { startTopProgress } from '@/components/TopProgressBar';
 
 interface Attendee { _id: string; name: string; }
 interface MediaItem {
@@ -12,6 +14,12 @@ interface MediaItem {
   thumbnailUrl: string;
   originalFileName: string;
   mimeType: string;
+}
+interface EditionItem {
+  _id: string;
+  name: string;
+  slug: string;
+  mediaCount: number;
 }
 interface EventData {
   _id: string;
@@ -30,6 +38,14 @@ export default function GalleryPage() {
   const eventSlug = params.eventSlug as string;
 
   const [event, setEvent] = useState<EventData | null>(null);
+  const [editions, setEditions] = useState<EditionItem[]>([]);
+  const [currentEdition, setCurrentEdition] = useState<EditionItem | null>(null);
+  const [selectedEditionId, setSelectedEditionId] = useState<string>(
+    searchParams.get('edition') || searchParams.get('editionId') || ''
+  );
+  const [isEditionDropdownOpen, setIsEditionDropdownOpen] = useState(false);
+  const editionDropdownRef = useRef<HTMLDivElement>(null);
+
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [totalPhotos, setTotalPhotos] = useState(0);
@@ -47,17 +63,36 @@ export default function GalleryPage() {
   const [pinError, setPinError] = useState('');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 
-  const load = useCallback(async (pageNum: number, attendeeId: string, append = false) => {
+  // Close edition dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (editionDropdownRef.current && !editionDropdownRef.current.contains(e.target as Node)) {
+        setIsEditionDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const load = useCallback(async (pageNum: number, attendeeId: string, editionId?: string, append = false) => {
     if (!append) setLoading(true);
     else setLoadingMore(true);
     try {
-      const params = new URLSearchParams({ page: String(pageNum), limit: '24' });
-      if (attendeeId) params.set('attendeeId', attendeeId);
-      const res = await fetch(`/api/public/gallery/${eventSlug}?${params}`);
+      const queryParams = new URLSearchParams({ page: String(pageNum), limit: '24' });
+      if (attendeeId) queryParams.set('attendeeId', attendeeId);
+      const activeEdition = editionId !== undefined ? editionId : selectedEditionId;
+      if (activeEdition) queryParams.set('editionId', activeEdition);
+
+      const res = await fetch(`/api/public/gallery/${eventSlug}?${queryParams}`);
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Gallery not found.'); return; }
       if (!append) {
         setEvent(data.event);
+        setEditions(data.editions || []);
+        if (data.currentEdition) {
+          setCurrentEdition(data.currentEdition);
+          setSelectedEditionId(data.currentEdition._id);
+        }
         setAttendees(data.attendees || []);
         setTotalPhotos(data.totalPhotos);
         setTotalVideos(data.totalVideos);
@@ -68,18 +103,39 @@ export default function GalleryPage() {
       setHasMore(pageNum < data.pagination.pages);
     } catch { setError('Failed to load gallery.'); }
     finally { setLoading(false); setLoadingMore(false); }
-  }, [eventSlug]);
+  }, [eventSlug, selectedEditionId]);
 
   useEffect(() => {
     setPage(1);
     setMedia([]);
-    load(1, selectedAttendee);
-  }, [selectedAttendee, load]);
+    load(1, selectedAttendee, selectedEditionId);
+  }, [selectedAttendee, selectedEditionId, load]);
+
+  function handleSelectEdition(ed: EditionItem) {
+    if (ed._id === selectedEditionId || ed._id === currentEdition?._id) {
+      setIsEditionDropdownOpen(false);
+      return;
+    }
+    startTopProgress();
+    setSelectedEditionId(ed._id);
+    setCurrentEdition(ed);
+    setSelectedAttendee('');
+    setIsEditionDropdownOpen(false);
+    setPage(1);
+    setMedia([]);
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('edition', ed.slug || ed._id);
+    url.searchParams.delete('attendeeId');
+    window.history.replaceState({}, '', url.toString());
+
+    load(1, '', ed._id, false);
+  }
 
   function handleLoadMore() {
     const next = page + 1;
     setPage(next);
-    load(next, selectedAttendee, true);
+    load(next, selectedAttendee, selectedEditionId, true);
   }
 
   async function handleDownload(item: MediaItem) {
@@ -257,13 +313,172 @@ export default function GalleryPage() {
       {/* Gallery Nav Bar */}
       <div className="gallery-bar" id="gallery-section">
         <div className="gallery-bar-top">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo_blue_croped.png" alt="F2 Fintech" style={{ height: '40px', objectFit: 'contain' }} />
             <div>
-              <h2 className="gallery-bar-title">{event?.name || '...'}</h2>
-              {(event?.editionName || event?.description) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <h2 className="gallery-bar-title" style={{ margin: 0 }}>{event?.name || '...'}</h2>
+
+                {/* Edition Selector Dropdown (Tareeqa 1) */}
+                {editions.length > 0 && (
+                  <div style={{ position: 'relative', display: 'inline-block' }} ref={editionDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditionDropdownOpen(!isEditionDropdownOpen)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '7px',
+                        padding: '5px 14px',
+                        borderRadius: '20px',
+                        backgroundColor: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        color: '#1d2ebd',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        boxShadow: '0 1px 3px rgba(29, 46, 189, 0.08)',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#dbeafe';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = '#eff6ff';
+                      }}
+                    >
+                      <Layers size={13} style={{ color: '#1d2ebd' }} />
+                      <span>{currentEdition?.name || event?.editionName || 'Select Edition'}</span>
+                      <ChevronDown
+                        size={14}
+                        style={{
+                          transform: isEditionDropdownOpen ? 'rotate(180deg)' : 'none',
+                          transition: 'transform 0.2s ease',
+                        }}
+                      />
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {isEditionDropdownOpen && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: 'calc(100% + 8px)',
+                          left: 0,
+                          minWidth: '270px',
+                          backgroundColor: '#ffffff',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '14px',
+                          boxShadow: '0 12px 30px -4px rgba(0, 0, 0, 0.12), 0 4px 12px -2px rgba(0, 0, 0, 0.06)',
+                          zIndex: 100,
+                          padding: '6px',
+                        }}
+                      >
+                        <div
+                          style={{
+                            padding: '8px 12px 6px',
+                            borderBottom: '1px solid #f1f5f9',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              letterSpacing: '0.1em',
+                              textTransform: 'uppercase',
+                              color: '#64748b',
+                            }}
+                          >
+                            Select Edition
+                          </span>
+                          <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                            {editions.length} Available
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
+                          {editions.map((ed) => {
+                            const isSelected = ed._id === (currentEdition?._id || selectedEditionId);
+                            return (
+                              <button
+                                key={ed._id}
+                                type="button"
+                                onClick={() => handleSelectEdition(ed)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '8px 12px',
+                                  borderRadius: '8px',
+                                  border: 'none',
+                                  backgroundColor: isSelected ? '#eff6ff' : 'transparent',
+                                  color: isSelected ? '#1d2ebd' : '#334155',
+                                  fontWeight: isSelected ? 600 : 500,
+                                  fontSize: '0.82rem',
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  width: '100%',
+                                  transition: 'background 0.15s',
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!isSelected) e.currentTarget.style.backgroundColor = '#f8fafc';
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  {isSelected ? (
+                                    <Check size={14} style={{ color: '#1d2ebd', flexShrink: 0 }} />
+                                  ) : (
+                                    <span style={{ width: '14px', height: '14px', display: 'inline-block' }} />
+                                  )}
+                                  <span>{ed.name}</span>
+                                </div>
+                                <span
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    padding: '2px 8px',
+                                    borderRadius: '9999px',
+                                    backgroundColor: isSelected ? '#dbeafe' : '#f1f5f9',
+                                    color: isSelected ? '#1d2ebd' : '#64748b',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {ed.mediaCount} media
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {editions.length === 1 && (
+                          <div
+                            style={{
+                              marginTop: '4px',
+                              padding: '8px 10px 4px',
+                              borderTop: '1px solid #f1f5f9',
+                              fontSize: '0.7rem',
+                              color: '#94a3b8',
+                              textAlign: 'center',
+                            }}
+                          >
+                            Additional editions will appear here once added in Admin.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {(currentEdition?.name || event?.editionName || event?.description) && (
                 <div style={{ fontFamily: 'var(--font-ui)', fontSize: '0.7rem', color: 'var(--color-dark-grey)', marginTop: 2, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                  {event.editionName || event.description}
+                  {currentEdition?.name || event?.editionName || event?.description}
                 </div>
               )}
             </div>
@@ -298,7 +513,7 @@ export default function GalleryPage() {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
                   </svg>
-                  {downloadProgress !== null ? `Loading ${Math.round(downloadProgress)}%` : downloadingZip ? 'Checking...' : 'Download ZIP'}
+                  {downloadProgress !== null ? `Loading ${Math.round(downloadProgress)}%` : downloadingZip ? 'Checking...' : 'Download Folder ZIP'}
                 </div>
                 {downloadProgress !== null && (
                   <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${downloadProgress}%`, background: 'rgba(255,255,255,0.2)', zIndex: 0, transition: 'width 0.2s' }} />

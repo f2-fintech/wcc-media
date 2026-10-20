@@ -160,8 +160,8 @@ function TopProgressBarInner() {
         style={{
           height: '100%',
           width: `${progress}%`,
-          background: 'linear-gradient(90deg, #0d9488 0%, #14b8a6 40%, #2dd4bf 80%, #5eead4 100%)',
-          boxShadow: '0 0 12px rgba(45, 212, 191, 0.9), 0 0 5px rgba(20, 184, 166, 0.7)',
+          background: 'linear-gradient(90deg, #1d2ebd 0%, #2563eb 45%, #0ea5e9 80%, #38bdf8 100%)',
+          boxShadow: '0 0 12px rgba(29, 46, 189, 0.85), 0 0 5px rgba(37, 99, 235, 0.6)',
           transition: progress === 100 ? 'width 0.15s ease-out' : 'width 0.25s cubic-bezier(0.1, 0.05, 0, 1)',
           position: 'relative',
         }}
@@ -174,7 +174,7 @@ function TopProgressBarInner() {
             top: '-2px',
             bottom: '-2px',
             width: '80px',
-            background: 'radial-gradient(circle at 100% 50%, rgba(255, 255, 255, 0.9) 0%, rgba(45, 212, 191, 0.5) 40%, transparent 80%)',
+            background: 'radial-gradient(circle at 100% 50%, rgba(255, 255, 255, 0.95) 0%, rgba(37, 99, 235, 0.6) 40%, transparent 80%)',
             filter: 'blur(1px)',
           }}
         />

@@ -28,9 +28,9 @@ const NAV_ITEMS = [
     ],
   },
   {
-    section: 'People',
+    section: 'Organization',
     items: [
-      { href: '/admin/attendees', label: 'Attendees', icon: 'users' },
+      { href: '/admin/attendees', label: 'Folders', icon: 'folder' },
     ],
   },
 ];
@@ -85,6 +85,11 @@ function NavIcon({ name }: { name: string }) {
         <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
       </svg>
     ),
+    folder: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      </svg>
+    ),
     logout: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
@@ -126,11 +131,55 @@ export default function AdminSidebar() {
 
   const sidebarContent = (
     <div className={`admin-sidebar ${mobileOpen ? 'open' : ''}`}>
-      {/* Logo */}
-      <div className="admin-sidebar-logo">
-        <h1>White Coat Club</h1>
-        <p>Admin Panel</p>
-      </div>
+      {/* Logo & 1F2 Branding */}
+      <Link
+        href="/admin/dashboard"
+        className="admin-sidebar-logo"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          textDecoration: 'none',
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/logo_blue_croped.png"
+          alt="F2 Fintech"
+          style={{
+            height: '38px',
+            width: 'auto',
+            objectFit: 'contain',
+            flexShrink: 0,
+          }}
+        />
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <span
+            style={{
+              fontFamily: 'var(--font-display, Georgia, serif)',
+              fontSize: '1.28rem',
+              fontWeight: 600,
+              letterSpacing: '0.03em',
+              color: '#0f172a',
+              lineHeight: 1.1,
+            }}
+          >
+            1<span style={{ color: '#1d2ebd', fontStyle: 'italic' }}>F2</span>
+          </span>
+          <span
+            style={{
+              fontSize: '0.62rem',
+              letterSpacing: '0.16em',
+              textTransform: 'uppercase',
+              color: '#64748b',
+              fontWeight: 600,
+              marginTop: '3px',
+            }}
+          >
+            Admin Console
+          </span>
+        </div>
+      </Link>
 
       {/* Nav */}
       <nav className="admin-nav">
@@ -186,10 +235,11 @@ export default function AdminSidebar() {
           zIndex: 50,
           width: 40,
           height: 40,
-          background: 'var(--color-charcoal)',
+          background: '#1d2ebd',
           color: 'white',
           border: 'none',
-          borderRadius: 'var(--radius-md)',
+          borderRadius: '10px',
+          boxShadow: '0 2px 8px rgba(29, 46, 189, 0.25)',
           cursor: 'pointer',
           alignItems: 'center',
           justifyContent: 'center',

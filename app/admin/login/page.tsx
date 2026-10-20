@@ -62,7 +62,6 @@ export default function AdminLoginPage() {
       } else {
         setSuccess(true);
         // Instant hard navigation ensures Set-Cookie headers are freshly loaded
-        // without race conditions in Next.js router cache
         setTimeout(() => {
           window.location.href = data.redirectUrl || '/admin/dashboard';
         }, 350);
@@ -79,11 +78,11 @@ export default function AdminLoginPage() {
       style={{
         minHeight: '100vh',
         width: '100%',
-        backgroundColor: '#070b10',
+        backgroundColor: '#f8fafc',
         backgroundImage: `
-          radial-gradient(ellipse 80% 50% at 50% -20%, rgba(20, 184, 166, 0.15), transparent),
-          radial-gradient(ellipse 60% 40% at 85% 80%, rgba(13, 148, 136, 0.08), transparent),
-          radial-gradient(circle at 15% 50%, rgba(15, 23, 42, 0.8), transparent)
+          radial-gradient(ellipse 80% 50% at 50% -20%, rgba(29, 46, 189, 0.08), transparent),
+          radial-gradient(ellipse 60% 40% at 85% 80%, rgba(37, 99, 235, 0.05), transparent),
+          linear-gradient(180deg, #f8fafc 0%, #ffffff 50%, #f1f5f9 100%)
         `,
         display: 'flex',
         flexDirection: 'column',
@@ -92,16 +91,16 @@ export default function AdminLoginPage() {
         padding: '24px 16px',
         position: 'relative',
         overflow: 'hidden',
-        fontFamily: 'var(--font-ui, system-ui, -apple-system, sans-serif)',
+        fontFamily: 'var(--font-ui, "Outfit", system-ui, -apple-system, sans-serif)',
       }}
     >
-      {/* Subtle background grid pattern */}
+      {/* Delicate background grid pattern */}
       <div
         aria-hidden="true"
         style={{
           position: 'absolute',
           inset: 0,
-          backgroundImage: `linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)`,
+          backgroundImage: `linear-gradient(rgba(29, 46, 189, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(29, 46, 189, 0.02) 1px, transparent 1px)`,
           backgroundSize: '48px 48px',
           pointerEvents: 'none',
         }}
@@ -118,32 +117,43 @@ export default function AdminLoginPage() {
       >
         <div
           style={{
-            backgroundColor: 'rgba(15, 23, 36, 0.82)',
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
+            backgroundColor: '#ffffff',
+            border: '1px solid #e2e8f0',
             borderRadius: '20px',
-            padding: '40px 36px',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 30px -10px rgba(20, 184, 166, 0.15)',
+            padding: '42px 36px',
+            boxShadow: '0 20px 40px -12px rgba(29, 46, 189, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05)',
           }}
         >
           {/* Header */}
           <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo_blue_croped.png"
+              alt="F2 Fintech"
+              style={{
+                height: '42px',
+                width: 'auto',
+                objectFit: 'contain',
+                margin: '0 auto 16px',
+                display: 'block',
+              }}
+            />
+
             <div
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '8px',
-                padding: '6px 14px',
+                padding: '5px 14px',
                 borderRadius: '9999px',
-                backgroundColor: 'rgba(20, 184, 166, 0.1)',
-                border: '1px solid rgba(20, 184, 166, 0.25)',
-                color: '#2dd4bf',
+                backgroundColor: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                color: '#1d2ebd',
                 fontSize: '0.72rem',
-                fontWeight: 600,
-                letterSpacing: '0.15em',
+                fontWeight: 700,
+                letterSpacing: '0.12em',
                 textTransform: 'uppercase',
-                marginBottom: '16px',
+                marginBottom: '14px',
               }}
             >
               <ShieldCheck size={14} />
@@ -152,19 +162,19 @@ export default function AdminLoginPage() {
 
             <h1
               style={{
-                color: '#f8fafc',
-                fontSize: '1.65rem',
+                color: '#0f172a',
+                fontSize: '1.6rem',
                 fontWeight: 600,
-                letterSpacing: '0.04em',
+                letterSpacing: '0.02em',
                 margin: 0,
-                fontFamily: 'var(--font-display, serif)',
+                fontFamily: 'var(--font-display, "Cormorant Garamond", serif)',
               }}
             >
-              White Coat Club
+              1F2 Management Console
             </h1>
             <p
               style={{
-                color: '#94a3b8',
+                color: '#64748b',
                 fontSize: '0.86rem',
                 marginTop: '6px',
                 marginBottom: 0,
@@ -182,16 +192,16 @@ export default function AdminLoginPage() {
                 alignItems: 'flex-start',
                 gap: '10px',
                 padding: '12px 16px',
-                backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
+                backgroundColor: '#fef2f2',
+                border: '1px solid #fecaca',
                 borderRadius: '10px',
-                color: '#fca5a5',
+                color: '#b91c1c',
                 fontSize: '0.84rem',
                 marginBottom: '20px',
                 lineHeight: 1.4,
               }}
             >
-              <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px', color: '#ef4444' }} />
+              <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px', color: '#dc2626' }} />
               <div>{error}</div>
             </div>
           )}
@@ -204,15 +214,15 @@ export default function AdminLoginPage() {
                 alignItems: 'center',
                 gap: '10px',
                 padding: '12px 16px',
-                backgroundColor: 'rgba(20, 184, 166, 0.15)',
-                border: '1px solid rgba(20, 184, 166, 0.4)',
+                backgroundColor: '#ecfdf5',
+                border: '1px solid #a7f3d0',
                 borderRadius: '10px',
-                color: '#5eead4',
+                color: '#047857',
                 fontSize: '0.84rem',
                 marginBottom: '20px',
               }}
             >
-              <CheckCircle2 size={18} style={{ color: '#2dd4bf', flexShrink: 0 }} />
+              <CheckCircle2 size={18} style={{ color: '#059669', flexShrink: 0 }} />
               <div>Authentication successful! Redirecting to dashboard...</div>
             </div>
           )}
@@ -225,11 +235,11 @@ export default function AdminLoginPage() {
                 htmlFor="admin-login-email"
                 style={{
                   display: 'block',
-                  color: '#cbd5e1',
-                  fontSize: '0.8rem',
-                  fontWeight: 500,
+                  color: '#334155',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
                   marginBottom: '8px',
-                  letterSpacing: '0.02em',
+                  letterSpacing: '0.01em',
                 }}
               >
                 Email Address
@@ -241,7 +251,7 @@ export default function AdminLoginPage() {
                     left: '14px',
                     top: '50%',
                     transform: 'translateY(-50%)',
-                    color: '#64748b',
+                    color: '#94a3b8',
                     pointerEvents: 'none',
                     display: 'flex',
                     alignItems: 'center',
@@ -263,20 +273,20 @@ export default function AdminLoginPage() {
                     width: '100%',
                     boxSizing: 'border-box',
                     padding: '12px 14px 12px 42px',
-                    backgroundColor: 'rgba(10, 15, 24, 0.65)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #cbd5e1',
                     borderRadius: '10px',
-                    color: '#f8fafc',
-                    fontSize: '0.9rem',
+                    color: '#0f172a',
+                    fontSize: '0.92rem',
                     outline: 'none',
                     transition: 'border-color 0.2s, box-shadow 0.2s',
                   }}
                   onFocus={(e) => {
-                    e.currentTarget.style.borderColor = '#14b8a6';
-                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(20, 184, 166, 0.2)';
+                    e.currentTarget.style.borderColor = '#1d2ebd';
+                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(29, 46, 189, 0.15)';
                   }}
                   onBlur={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+                    e.currentTarget.style.borderColor = '#cbd5e1';
                     e.currentTarget.style.boxShadow = 'none';
                   }}
                 />
@@ -289,11 +299,11 @@ export default function AdminLoginPage() {
                 htmlFor="admin-login-password"
                 style={{
                   display: 'block',
-                  color: '#cbd5e1',
-                  fontSize: '0.8rem',
-                  fontWeight: 500,
+                  color: '#334155',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
                   marginBottom: '8px',
-                  letterSpacing: '0.02em',
+                  letterSpacing: '0.01em',
                 }}
               >
                 Password
@@ -305,7 +315,7 @@ export default function AdminLoginPage() {
                     left: '14px',
                     top: '50%',
                     transform: 'translateY(-50%)',
-                    color: '#64748b',
+                    color: '#94a3b8',
                     pointerEvents: 'none',
                     display: 'flex',
                     alignItems: 'center',
@@ -326,20 +336,20 @@ export default function AdminLoginPage() {
                     width: '100%',
                     boxSizing: 'border-box',
                     padding: '12px 42px 12px 42px',
-                    backgroundColor: 'rgba(10, 15, 24, 0.65)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #cbd5e1',
                     borderRadius: '10px',
-                    color: '#f8fafc',
-                    fontSize: '0.9rem',
+                    color: '#0f172a',
+                    fontSize: '0.92rem',
                     outline: 'none',
                     transition: 'border-color 0.2s, box-shadow 0.2s',
                   }}
                   onFocus={(e) => {
-                    e.currentTarget.style.borderColor = '#14b8a6';
-                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(20, 184, 166, 0.2)';
+                    e.currentTarget.style.borderColor = '#1d2ebd';
+                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(29, 46, 189, 0.15)';
                   }}
                   onBlur={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+                    e.currentTarget.style.borderColor = '#cbd5e1';
                     e.currentTarget.style.boxShadow = 'none';
                   }}
                 />
@@ -355,7 +365,7 @@ export default function AdminLoginPage() {
                     transform: 'translateY(-50%)',
                     background: 'none',
                     border: 'none',
-                    color: '#94a3b8',
+                    color: '#64748b',
                     cursor: 'pointer',
                     padding: '4px',
                     display: 'flex',
@@ -378,7 +388,7 @@ export default function AdminLoginPage() {
                   gap: '8px',
                   cursor: 'pointer',
                   fontSize: '0.82rem',
-                  color: '#94a3b8',
+                  color: '#475569',
                   userSelect: 'none',
                 }}
               >
@@ -387,7 +397,7 @@ export default function AdminLoginPage() {
                   checked={rememberEmail}
                   onChange={(e) => setRememberEmail(e.target.checked)}
                   style={{
-                    accentColor: '#14b8a6',
+                    accentColor: '#1d2ebd',
                     width: '15px',
                     height: '15px',
                     cursor: 'pointer',
@@ -395,7 +405,7 @@ export default function AdminLoginPage() {
                 />
                 Remember email
               </label>
-              <span style={{ fontSize: '0.74rem', color: '#64748b' }}>256-bit SSL Encrypted</span>
+              <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>256-bit SSL Encrypted</span>
             </div>
 
             {/* Submit Button */}
@@ -411,7 +421,7 @@ export default function AdminLoginPage() {
                 border: 'none',
                 background: success
                   ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)'
-                  : 'linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)',
+                  : 'linear-gradient(135deg, #1d2ebd 0%, #2563eb 100%)',
                 color: '#ffffff',
                 fontSize: '0.92rem',
                 fontWeight: 600,
@@ -421,19 +431,19 @@ export default function AdminLoginPage() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px',
-                boxShadow: '0 4px 14px rgba(20, 184, 166, 0.35)',
+                boxShadow: '0 4px 14px rgba(29, 46, 189, 0.3)',
                 transition: 'all 0.2s ease',
                 opacity: loading ? 0.8 : 1,
               }}
               onMouseEnter={(e) => {
                 if (!loading && !success) {
                   e.currentTarget.style.transform = 'translateY(-1px)';
-                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(20, 184, 166, 0.45)';
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(29, 46, 189, 0.4)';
                 }
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = 'none';
-                e.currentTarget.style.boxShadow = '0 4px 14px rgba(20, 184, 166, 0.35)';
+                e.currentTarget.style.boxShadow = '0 4px 14px rgba(29, 46, 189, 0.3)';
               }}
             >
               {loading ? (
@@ -460,22 +470,23 @@ export default function AdminLoginPage() {
             style={{
               marginTop: '28px',
               paddingTop: '20px',
-              borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+              borderTop: '1px solid #f1f5f9',
               textAlign: 'center',
             }}
           >
             <Link
               href="/"
               style={{
-                color: '#64748b',
-                fontSize: '0.8rem',
+                color: '#1d2ebd',
+                fontSize: '0.82rem',
+                fontWeight: 600,
                 textDecoration: 'none',
                 transition: 'color 0.2s',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#94a3b8')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#152296')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#1d2ebd')}
             >
-              ← Return to Public Gallery
+              ← Return to 1F2 Events Portal
             </Link>
           </div>
         </div>
@@ -485,9 +496,9 @@ export default function AdminLoginPage() {
           style={{
             textAlign: 'center',
             marginTop: '20px',
-            fontSize: '0.72rem',
-            color: '#475569',
-            letterSpacing: '0.03em',
+            fontSize: '0.74rem',
+            color: '#64748b',
+            letterSpacing: '0.02em',
           }}
         >
           Protected System • Authorized Administrative Personnel Only
