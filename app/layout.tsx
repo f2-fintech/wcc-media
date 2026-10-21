@@ -4,10 +4,19 @@ import TopProgressBar from '@/components/TopProgressBar';
 
 export const metadata: Metadata = {
   title: {
-    default: 'Event Gallery Platform',
-    template: '%s | Event Gallery',
+    default: '1F2 | Curated Events & Gallery Portal',
+    template: '%s | 1F2',
   },
-  description: 'Professional event media distribution platform',
+  description: 'Official digital showcase of corporate milestones, celebrations, and events across 1F2.',
+  icons: {
+    icon: [
+      { url: '/icon.png', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/logo_blue_croped.png', type: 'image/png' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: '/apple-icon.png',
+  },
 };
 
 export default function RootLayout({

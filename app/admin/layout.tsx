@@ -6,6 +6,11 @@ export const metadata: Metadata = {
     default: '1F2 Admin Console',
     template: '%s | 1F2 Admin',
   },
+  icons: {
+    icon: '/icon.png',
+    shortcut: '/favicon.ico',
+    apple: '/apple-icon.png',
+  },
   robots: 'noindex,nofollow',
 };
 
