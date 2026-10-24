@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get('search') || '';
   const all = searchParams.get('all') === 'true';
   const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
-  const limit = all ? 1000 : Math.min(100, parseInt(searchParams.get('limit') || '20'));
+  const limit = all ? 1000 : Math.min(100, parseInt(searchParams.get('limit') || '10'));
 
   await connectDB();
 

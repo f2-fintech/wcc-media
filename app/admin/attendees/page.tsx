@@ -24,7 +24,8 @@ export default function AttendeesPage() {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
 
-  const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 20, total: 0, pages: 0 });
+  const [pageSize, setPageSize] = useState(10);
+  const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 10, total: 0, pages: 0 });
   const [loading, setLoading] = useState(false);
 
   // Edit folder modal state
@@ -54,9 +55,9 @@ export default function AttendeesPage() {
   }, []);
 
   // Paginated load with debounced search
-  const loadAttendees = useCallback(async (page = 1) => {
+  const loadAttendees = useCallback(async (page = 1, currentLimit = pageSize) => {
     setLoading(true);
-    const params = new URLSearchParams({ page: String(page), limit: '20' });
+    const params = new URLSearchParams({ page: String(page), limit: String(currentLimit) });
     if (filterEvent) params.set('eventId', filterEvent);
     if (debouncedSearch) params.set('search', debouncedSearch);
 
@@ -64,11 +65,13 @@ export default function AttendeesPage() {
       const res = await fetch(`/api/attendees?${params}`);
       const data = await res.json();
       setAttendees(data.attendees || []);
-      setPagination(data.pagination || { page: 1, limit: 20, total: 0, pages: 0 });
+      setPagination(data.pagination || { page: 1, limit: currentLimit, total: 0, pages: 0 });
     } finally { setLoading(false); }
-  }, [filterEvent, debouncedSearch]);
+  }, [filterEvent, debouncedSearch, pageSize]);
 
-  useEffect(() => { loadAttendees(1); }, [loadAttendees]);
+  useEffect(() => {
+    loadAttendees(1, pageSize);
+  }, [loadAttendees, pageSize]);
 
   function openEdit(a: Attendee) {
     setEditingAttendee(a);
@@ -105,7 +108,7 @@ export default function AttendeesPage() {
       setShowCreateModal(false);
       setSuccessMsg(`Folder "${data.attendee.name}" created successfully!`);
       setTimeout(() => setSuccessMsg(''), 4000);
-      loadAttendees(1);
+      loadAttendees(1, pageSize);
     } catch {
       setError('Network error while creating folder.');
     } finally {
@@ -127,7 +130,7 @@ export default function AttendeesPage() {
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Failed to save.'); return; }
       setEditingAttendee(null);
-      loadAttendees(pagination.page);
+      loadAttendees(pagination.page, pageSize);
     } catch { setError('Network error.'); }
     finally { setSaving(false); }
   }
@@ -135,7 +138,7 @@ export default function AttendeesPage() {
   async function handleDelete(a: Attendee) {
     if (!confirm(`Delete folder "${a.name}"? Media inside may become unlinked.`)) return;
     await fetch(`/api/attendees/${a._id}`, { method: 'DELETE' });
-    loadAttendees(pagination.page);
+    loadAttendees(pagination.page, pageSize);
   }
 
   return (
@@ -144,7 +147,7 @@ export default function AttendeesPage() {
         <div>
           <h2 className="admin-topbar-title">Media Folders</h2>
           <p style={{ fontFamily: 'var(--font-ui)', fontSize: '0.8rem', color: 'var(--color-dark-grey)', marginTop: 2 }}>
-            {pagination.total.toLocaleString()} folder(s) total · Paginated to 20 per page
+            {pagination.total.toLocaleString()} folder(s) total · Page {pagination.page} of {Math.max(1, pagination.pages)}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -341,13 +344,81 @@ export default function AttendeesPage() {
           )}
         </div>
 
-        {pagination.pages > 1 && (
-          <div className="pagination">
-            <button className="page-btn" disabled={pagination.page <= 1} onClick={() => loadAttendees(pagination.page - 1)}>‹</button>
-            {Array.from({ length: Math.min(pagination.pages, 7) }, (_, i) => i + 1).map(p => (
-              <button key={p} className={`page-btn ${pagination.page === p ? 'active' : ''}`} onClick={() => loadAttendees(p)}>{p}</button>
-            ))}
-            <button className="page-btn" disabled={pagination.page >= pagination.pages} onClick={() => loadAttendees(pagination.page + 1)}>›</button>
+        {/* Complete Pagination Bar (Always visible when folders exist) */}
+        {pagination.total > 0 && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 16,
+            padding: '18px 8px 8px',
+            fontFamily: 'var(--font-ui)',
+            fontSize: '0.85rem',
+            color: 'var(--color-dark-grey)',
+          }}>
+            <div>
+              <span>
+                Showing <strong>{(pagination.page - 1) * pageSize + 1}</strong>–
+                <strong>{Math.min(pagination.page * pageSize, pagination.total)}</strong> of{' '}
+                <strong>{pagination.total}</strong> folders
+              </span>
+            </div>
+
+            {/* Pagination Controls */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button
+                className="page-btn"
+                disabled={pagination.page <= 1}
+                onClick={() => loadAttendees(pagination.page - 1, pageSize)}
+                title="Previous Page"
+              >
+                ‹
+              </button>
+
+              {Array.from({ length: Math.min(pagination.pages || 1, 7) }, (_, i) => i + 1).map((p) => (
+                <button
+                  key={p}
+                  className={`page-btn ${pagination.page === p ? 'active' : ''}`}
+                  onClick={() => loadAttendees(p, pageSize)}
+                >
+                  {p}
+                </button>
+              ))}
+
+              <button
+                className="page-btn"
+                disabled={pagination.page >= pagination.pages}
+                onClick={() => loadAttendees(pagination.page + 1, pageSize)}
+                title="Next Page"
+              >
+                ›
+              </button>
+            </div>
+
+            {/* Rows Per Page Selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Rows per page:</span>
+              <select
+                className="form-select"
+                value={pageSize}
+                onChange={(e) => {
+                  const newSize = parseInt(e.target.value);
+                  setPageSize(newSize);
+                  loadAttendees(1, newSize);
+                }}
+                style={{
+                  width: 'auto',
+                  padding: '4px 8px',
+                  fontSize: '0.82rem',
+                  minWidth: 70,
+                }}
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
           </div>
         )}
       </div>
