@@ -1,11 +1,27 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { formatFileSize } from '@/lib/utils';
 
-interface Event { _id: string; name: string; }
-interface Edition { _id: string; name: string; }
-interface Attendee { _id: string; name: string; email: string; }
+interface Event {
+  _id: string;
+  name: string;
+}
+
+interface Edition {
+  _id: string;
+  name: string;
+}
+
+interface ExistingFolder {
+  _id: string;
+  name: string;
+  email?: string;
+  mediaCount?: number;
+  downloadPin?: string;
+}
 
 interface FileEntry {
   file: File;
@@ -15,71 +31,175 @@ interface FileEntry {
   mediaId?: string;
 }
 
-export default function MediaUploadPage() {
+function MediaUploadInner() {
+  const searchParams = useSearchParams();
+  const urlEventId = searchParams.get('eventId') || '';
+  const urlFolderId = searchParams.get('folderId') || searchParams.get('attendeeId') || '';
+  const urlEditionId = searchParams.get('editionId') || '';
+
   const [events, setEvents] = useState<Event[]>([]);
   const [editions, setEditions] = useState<Edition[]>([]);
-  const [selectedEvent, setSelectedEvent] = useState('');
-  const [selectedEdition, setSelectedEdition] = useState('');
-  const [attendeeName, setAttendeeName] = useState('');
-  const [attendeeEmail, setAttendeeEmail] = useState('');
+  const [selectedEvent, setSelectedEvent] = useState(urlEventId);
+  const [selectedEdition, setSelectedEdition] = useState(urlEditionId);
+
+  // Folder selection mode: 'existing' or 'new'
+  const [folderMode, setFolderMode] = useState<'existing' | 'new'>(urlFolderId ? 'existing' : 'existing');
+  const [existingFolders, setExistingFolders] = useState<ExistingFolder[]>([]);
+  const [selectedFolderId, setSelectedFolderId] = useState(urlFolderId);
+  const [folderSearch, setFolderSearch] = useState('');
+
+  // New folder fields
+  const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderEmail, setNewFolderEmail] = useState('');
+  const [newFolderPin, setNewFolderPin] = useState('');
+
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState('');
   const [successCount, setSuccessCount] = useState(0);
+  const [lastUploadedFolderId, setLastUploadedFolderId] = useState('');
+  const [loadingFolders, setLoadingFolders] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Fetch events on mount
   useEffect(() => {
-    fetch('/api/events').then(r => r.json()).then(data => {
-      setEvents(data.events || []);
-      if (data.events?.length) setSelectedEvent(data.events[0]._id);
-    });
-  }, []);
+    fetch('/api/events')
+      .then(r => r.json())
+      .then(data => {
+        const evList = data.events || [];
+        setEvents(evList);
+        if (!urlEventId && evList.length > 0) {
+          setSelectedEvent(evList[0]._id);
+        }
+      });
+  }, [urlEventId]);
 
-  const [existingFolders, setExistingFolders] = useState<{ _id: string; name: string }[]>([]);
+  // Fetch editions and existing folders when event changes
+  const loadFoldersForEvent = (eventId: string) => {
+    if (!eventId) return;
+    setLoadingFolders(true);
+    fetch(`/api/attendees?eventId=${eventId}&all=true`)
+      .then(r => r.json())
+      .then(data => {
+        const folders: ExistingFolder[] = data.attendees || [];
+        setExistingFolders(folders);
+
+        // If URL requested a specific folder, select it
+        if (urlFolderId && folders.some(f => f._id === urlFolderId)) {
+          setSelectedFolderId(urlFolderId);
+          setFolderMode('existing');
+        } else if (folders.length > 0 && !selectedFolderId) {
+          setSelectedFolderId(folders[0]._id);
+        } else if (folders.length === 0) {
+          // If no folders exist, automatically switch to 'new' mode
+          setFolderMode('new');
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingFolders(false));
+  };
 
   useEffect(() => {
     if (!selectedEvent) return;
-    fetch(`/api/editions?eventId=${selectedEvent}`).then(r => r.json()).then(data => {
-      const active = (data.editions || []).filter((e: any) => e.status === 'active');
-      setEditions(active);
-      if (active.length) setSelectedEdition(active[0]._id);
-    });
-    fetch(`/api/attendees?eventId=${selectedEvent}&limit=200`).then(r => r.json()).then(data => {
-      setExistingFolders(data.attendees || []);
-    }).catch(() => {});
-  }, [selectedEvent]);
+
+    fetch(`/api/editions?eventId=${selectedEvent}`)
+      .then(r => r.json())
+      .then(data => {
+        const active = (data.editions || []).filter((e: any) => e.status === 'active');
+        setEditions(active);
+        if (urlEditionId && active.some((e: any) => e._id === urlEditionId)) {
+          setSelectedEdition(urlEditionId);
+        } else if (active.length > 0) {
+          setSelectedEdition(active[0]._id);
+        }
+      });
+
+    loadFoldersForEvent(selectedEvent);
+  }, [selectedEvent, urlEditionId, urlFolderId]);
+
+  // Filtered list of folders for quick search
+  const filteredFolders = useMemo(() => {
+    if (!folderSearch.trim()) return existingFolders;
+    const query = folderSearch.toLowerCase().trim();
+    return existingFolders.filter(
+      f => f.name.toLowerCase().includes(query) || (f.email && f.email.toLowerCase().includes(query))
+    );
+  }, [existingFolders, folderSearch]);
+
+  const activeSelectedFolder = useMemo(() => {
+    return existingFolders.find(f => f._id === selectedFolderId) || null;
+  }, [existingFolders, selectedFolderId]);
 
   function addFiles(newFiles: FileList | null) {
     if (!newFiles) return;
     const entries: FileEntry[] = Array.from(newFiles).map(f => ({
-      file: f, status: 'pending', progress: 0,
+      file: f,
+      status: 'pending',
+      progress: 0,
     }));
     setFiles(prev => [...prev, ...entries]);
   }
 
   async function handleUpload() {
     setError('');
-    if (!selectedEvent || !selectedEdition) { setError('Select an event and edition.'); return; }
-    if (!attendeeName.trim()) { setError('Folder name is required.'); return; }
-    if (files.length === 0) { setError('Select at least one file.'); return; }
-    if (files.every(f => f.status === 'done')) { setError('All files already uploaded.'); return; }
+    if (!selectedEvent || !selectedEdition) {
+      setError('Please select an event and edition.');
+      return;
+    }
+
+    let targetAttendeeId = '';
+
+    if (folderMode === 'existing') {
+      if (!selectedFolderId) {
+        setError('Please select an existing folder to upload into.');
+        return;
+      }
+      targetAttendeeId = selectedFolderId;
+    } else {
+      if (!newFolderName.trim()) {
+        setError('Folder name is required for creating a new folder.');
+        return;
+      }
+    }
+
+    if (files.length === 0) {
+      setError('Select at least one file to upload.');
+      return;
+    }
+    if (files.every(f => f.status === 'done')) {
+      setError('All files are already uploaded. Add new files or clear the list.');
+      return;
+    }
 
     setUploading(true);
     let successCnt = 0;
 
     try {
-      // 1. Find or create folder
-      const attendeeRes = await fetch('/api/attendees', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: selectedEvent, name: attendeeName.trim(), email: attendeeEmail.trim() }),
-      });
-      const attendeeData = await attendeeRes.json();
-      if (!attendeeRes.ok) { setError(attendeeData.error || 'Failed to create folder.'); setUploading(false); return; }
-      const attendeeId = attendeeData.attendee._id;
+      // 1. If in 'new' mode, create or find the folder first
+      if (folderMode === 'new') {
+        const attendeeRes = await fetch('/api/attendees', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventId: selectedEvent,
+            name: newFolderName.trim(),
+            email: newFolderEmail.trim(),
+            downloadPin: newFolderPin.trim(),
+          }),
+        });
+        const attendeeData = await attendeeRes.json();
+        if (!attendeeRes.ok) {
+          setError(attendeeData.error || 'Failed to create folder.');
+          setUploading(false);
+          return;
+        }
+        targetAttendeeId = attendeeData.attendee._id;
+      }
 
-      // 2. Get presigned URLs
+      setLastUploadedFolderId(targetAttendeeId);
+
+      // 2. Get presigned URLs for pending files
       const pendingFiles = files.filter(f => f.status === 'pending');
       const presignRes = await fetch('/api/uploads/presign', {
         method: 'POST',
@@ -87,16 +207,25 @@ export default function MediaUploadPage() {
         body: JSON.stringify({
           eventId: selectedEvent,
           editionId: selectedEdition,
-          attendeeId,
-          files: pendingFiles.map(f => ({ name: f.file.name, type: f.file.type, size: f.file.size })),
+          attendeeId: targetAttendeeId,
+          files: pendingFiles.map(f => ({
+            name: f.file.name,
+            type: f.file.type,
+            size: f.file.size,
+          })),
         }),
       });
+
       const presignData = await presignRes.json();
-      if (!presignRes.ok) { setError(presignData.error || 'Failed to get upload URLs.'); setUploading(false); return; }
+      if (!presignRes.ok) {
+        setError(presignData.error || 'Failed to get upload URLs.');
+        setUploading(false);
+        return;
+      }
 
       // 3. Upload each file to S3
       await Promise.allSettled(
-        presignData.results.map(async (result: any, idx: number) => {
+        presignData.results.map(async (result: any) => {
           const fileIdx = files.findIndex(f => f.status === 'pending' && f.file.name === result.name);
           if (fileIdx === -1) return;
 
@@ -157,8 +286,20 @@ export default function MediaUploadPage() {
       );
 
       setSuccessCount(prev => prev + successCnt);
-    } catch (err) {
-      setError('Upload failed. Please try again.');
+
+      // Refresh existing folders so updated mediaCount is visible
+      loadFoldersForEvent(selectedEvent);
+
+      // If a new folder was created, switch to existing mode with this folder selected
+      if (folderMode === 'new' && targetAttendeeId) {
+        setSelectedFolderId(targetAttendeeId);
+        setFolderMode('existing');
+        setNewFolderName('');
+        setNewFolderEmail('');
+        setNewFolderPin('');
+      }
+    } catch {
+      setError('Upload failed. Please check your network and try again.');
     } finally {
       setUploading(false);
     }
@@ -177,61 +318,244 @@ export default function MediaUploadPage() {
   return (
     <>
       <div className="admin-topbar">
-        <h2 className="admin-topbar-title">Upload Media</h2>
+        <div>
+          <h2 className="admin-topbar-title">Upload Media</h2>
+          <p style={{ fontFamily: 'var(--font-ui)', fontSize: '0.78rem', color: 'var(--color-dark-grey)', marginTop: 2 }}>
+            Add photos & videos directly into new or existing folders
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <Link href="/admin/attendees" className="btn btn-outline btn-sm">
+            📁 View All Folders
+          </Link>
+          <Link href="/admin/media" className="btn btn-outline btn-sm">
+            🖼️ View All Media
+          </Link>
+        </div>
       </div>
 
       <div className="admin-content">
-        <div style={{ maxWidth: 720 }}>
+        <div style={{ maxWidth: 780 }}>
           <div className="card">
-            <div className="card-header">
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 className="card-title">Upload Photos & Videos</h3>
+              <span className="badge badge-photo" style={{ fontSize: '0.75rem' }}>
+                Event Media Console
+              </span>
             </div>
+
             <div className="card-body">
-              {/* Event / Edition */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+              {/* Event / Edition Selection */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
                 <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Event *</label>
-                  <select id="upload-event" className="form-select" value={selectedEvent} onChange={e => setSelectedEvent(e.target.value)}>
-                    {events.map(ev => <option key={ev._id} value={ev._id}>{ev.name}</option>)}
+                  <select
+                    id="upload-event"
+                    className="form-select"
+                    value={selectedEvent}
+                    onChange={e => {
+                      setSelectedEvent(e.target.value);
+                      setSelectedFolderId('');
+                    }}
+                  >
+                    {events.map(ev => (
+                      <option key={ev._id} value={ev._id}>{ev.name}</option>
+                    ))}
                   </select>
                 </div>
+
                 <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Edition *</label>
-                  <select id="upload-edition" className="form-select" value={selectedEdition} onChange={e => setSelectedEdition(e.target.value)}>
-                    {editions.map(ed => <option key={ed._id} value={ed._id}>{ed.name}</option>)}
+                  <select
+                    id="upload-edition"
+                    className="form-select"
+                    value={selectedEdition}
+                    onChange={e => setSelectedEdition(e.target.value)}
+                  >
+                    {editions.length === 0 ? (
+                      <option value="">No active editions</option>
+                    ) : (
+                      editions.map(ed => (
+                        <option key={ed._id} value={ed._id}>{ed.name}</option>
+                      ))
+                    )}
                   </select>
                 </div>
               </div>
 
-              {/* Folder Name & Optional Email */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Folder Name *</label>
-                  <input
-                    id="upload-attendee-name"
-                    className="form-input"
-                    placeholder="e.g. Stage Highlights, Dr. Anas, Awards..."
-                    value={attendeeName}
-                    onChange={e => setAttendeeName(e.target.value)}
-                    list="existing-folders-list"
-                  />
-                  <datalist id="existing-folders-list">
-                    {existingFolders.map(f => (
-                      <option key={f._id} value={f.name} />
-                    ))}
-                  </datalist>
+              {/* Destination: Existing Folder vs New Folder */}
+              <div style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: 'var(--radius-md)',
+                padding: 16,
+                marginBottom: 24,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <label className="form-label" style={{ margin: 0, fontWeight: 600, color: '#1e293b' }}>
+                    Destination Folder *
+                  </label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${folderMode === 'existing' ? 'btn-accent' : 'btn-outline'}`}
+                      style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                      onClick={() => setFolderMode('existing')}
+                    >
+                      📁 Existing Folder ({existingFolders.length})
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${folderMode === 'new' ? 'btn-accent' : 'btn-outline'}`}
+                      style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                      onClick={() => setFolderMode('new')}
+                    >
+                      ➕ Create New Folder
+                    </button>
+                  </div>
                 </div>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Contact Email (Optional)</label>
-                  <input
-                    id="upload-attendee-email"
-                    className="form-input"
-                    type="email"
-                    placeholder="contact@example.com (for private PIN)"
-                    value={attendeeEmail}
-                    onChange={e => setAttendeeEmail(e.target.value)}
-                  />
-                </div>
+
+                {/* MODE 1: Select Existing Folder */}
+                {folderMode === 'existing' && (
+                  <div>
+                    {loadingFolders ? (
+                      <p style={{ fontSize: '0.82rem', color: '#64748b' }}>Loading existing folders...</p>
+                    ) : existingFolders.length === 0 ? (
+                      <div style={{ padding: 16, background: '#fffbeb', border: '1px dashed #fcd34d', borderRadius: 8, textAlign: 'center' }}>
+                        <p style={{ margin: '0 0 8px', fontSize: '0.85rem', color: '#92400e', fontWeight: 500 }}>
+                          No folders found for this event yet.
+                        </p>
+                        <button
+                          type="button"
+                          className="btn btn-accent btn-sm"
+                          onClick={() => setFolderMode('new')}
+                        >
+                          ➕ Create First Folder
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        {existingFolders.length > 6 && (
+                          <div style={{ marginBottom: 10 }}>
+                            <input
+                              className="form-input"
+                              style={{ fontSize: '0.82rem', padding: '6px 12px' }}
+                              placeholder="🔍 Search folder by name or email..."
+                              value={folderSearch}
+                              onChange={e => setFolderSearch(e.target.value)}
+                            />
+                          </div>
+                        )}
+
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <select
+                            id="select-existing-folder"
+                            className="form-select"
+                            value={selectedFolderId}
+                            onChange={e => setSelectedFolderId(e.target.value)}
+                            style={{ fontWeight: 500 }}
+                          >
+                            <option value="">-- Choose an existing folder ({filteredFolders.length} available) --</option>
+                            {filteredFolders.map(folder => (
+                              <option key={folder._id} value={folder._id}>
+                                📁 {folder.name} ({folder.mediaCount ?? 0} items)
+                                {folder.email ? ` • ${folder.email}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Selected Folder Details Card */}
+                        {activeSelectedFolder && (
+                          <div style={{
+                            marginTop: 12,
+                            padding: '12px 14px',
+                            background: '#f0fdf4',
+                            border: '1px solid #bbf7d0',
+                            borderRadius: 'var(--radius-md)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                          }}>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{
+                                  fontSize: '0.68rem',
+                                  fontWeight: 600,
+                                  background: '#22c55e',
+                                  color: 'white',
+                                  padding: '2px 8px',
+                                  borderRadius: 12,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.04em',
+                                }}>
+                                  Target Folder
+                                </span>
+                                <strong style={{ color: '#166534', fontSize: '0.95rem' }}>
+                                  📁 {activeSelectedFolder.name}
+                                </strong>
+                              </div>
+                              <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: '#15803d' }}>
+                                Contains <strong>{activeSelectedFolder.mediaCount ?? 0}</strong> media files currently.
+                                {activeSelectedFolder.email && ` · Email: ${activeSelectedFolder.email}`}
+                                {activeSelectedFolder.downloadPin && ' · PIN Protected'}
+                                {' — All uploaded media will be added directly into this folder.'}
+                              </p>
+                            </div>
+                            <Link
+                              href={`/admin/media?eventId=${selectedEvent}&attendeeId=${activeSelectedFolder._id}`}
+                              className="btn btn-ghost btn-sm"
+                              style={{ color: '#166534', fontSize: '0.75rem', textDecoration: 'underline' }}
+                              target="_blank"
+                            >
+                              Browse Folder ↗
+                            </Link>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* MODE 2: Create New Folder */}
+                {folderMode === 'new' && (
+                  <div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 12, marginBottom: 12 }}>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label">New Folder Name *</label>
+                        <input
+                          id="new-folder-name"
+                          className="form-input"
+                          placeholder="e.g. Stage Highlights, Dr. Anas, Awards..."
+                          value={newFolderName}
+                          onChange={e => setNewFolderName(e.target.value)}
+                        />
+                      </div>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label">Contact Email (Optional)</label>
+                        <input
+                          id="new-folder-email"
+                          className="form-input"
+                          type="email"
+                          placeholder="attendee@example.com"
+                          value={newFolderEmail}
+                          onChange={e => setNewFolderEmail(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Download PIN (Optional)</label>
+                      <input
+                        id="new-folder-pin"
+                        className="form-input"
+                        placeholder="e.g. 1234 (leaves public if blank)"
+                        value={newFolderPin}
+                        onChange={e => setNewFolderPin(e.target.value)}
+                        style={{ maxWidth: 260 }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Drop Zone */}
@@ -253,7 +577,7 @@ export default function MediaUploadPage() {
                   Drop files here or click to browse
                 </p>
                 <p style={{ fontSize: '0.8rem', color: 'var(--color-dark-grey)' }}>
-                  Photos: JPG, PNG, WEBP (max 50 MB) · Videos: MP4, MOV (max 2 GB)
+                  Photos: JPG, PNG, WEBP, HEIC (max 50 MB) · Videos: MP4, MOV (max 2 GB)
                 </p>
                 <input
                   ref={fileInputRef}
@@ -265,58 +589,115 @@ export default function MediaUploadPage() {
                 />
               </div>
 
-              {/* File list */}
+              {/* Selected Files List */}
               {files.length > 0 && (
                 <div style={{ marginTop: 16, border: '1px solid var(--color-light-grey)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-                  {files.map((f, idx) => (
-                    <div key={idx} style={{
-                      display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
-                      borderBottom: idx < files.length - 1 ? '1px solid var(--color-cream)' : 'none',
-                      background: f.status === 'done' ? '#f0faf4' : f.status === 'error' ? '#fef2f2' : 'white',
-                    }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontFamily: 'var(--font-ui)', fontSize: '0.85rem', fontWeight: 500, color: 'var(--color-charcoal)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {f.file.name}
-                        </p>
-                        <p style={{ fontSize: '0.75rem', color: 'var(--color-dark-grey)' }}>
-                          {formatFileSize(f.file.size)} · {f.file.type}
-                        </p>
-                        {f.status === 'uploading' && (
-                          <div className="progress-bar" style={{ marginTop: 6 }}>
-                            <div className="progress-bar-fill" style={{ width: `${f.progress}%` }} />
-                          </div>
+                  <div style={{ padding: '8px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', fontFamily: 'var(--font-ui)' }}>
+                      Selected Files ({files.length})
+                    </span>
+                    {!uploading && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: '0.75rem', padding: '2px 8px' }}
+                        onClick={() => setFiles([])}
+                      >
+                        Clear All
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+                    {files.map((f, idx) => (
+                      <div key={idx} style={{
+                        display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
+                        borderBottom: idx < files.length - 1 ? '1px solid var(--color-cream)' : 'none',
+                        background: f.status === 'done' ? '#f0faf4' : f.status === 'error' ? '#fef2f2' : 'white',
+                      }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontFamily: 'var(--font-ui)', fontSize: '0.85rem', fontWeight: 500, color: 'var(--color-charcoal)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {f.file.name}
+                          </p>
+                          <p style={{ fontSize: '0.75rem', color: 'var(--color-dark-grey)' }}>
+                            {formatFileSize(f.file.size)} · {f.file.type || 'file'}
+                          </p>
+                          {f.status === 'uploading' && (
+                            <div className="progress-bar" style={{ marginTop: 6 }}>
+                              <div className="progress-bar-fill" style={{ width: `${f.progress}%` }} />
+                            </div>
+                          )}
+                          {f.status === 'error' && <p style={{ fontSize: '0.75rem', color: 'var(--color-error)', marginTop: 2 }}>{f.error}</p>}
+                        </div>
+                        <span style={{
+                          fontSize: '0.75rem',
+                          fontFamily: 'var(--font-ui)',
+                          fontWeight: 600,
+                          color: f.status === 'done' ? 'var(--color-success)' : f.status === 'error' ? 'var(--color-error)' : f.status === 'uploading' ? 'var(--color-accent)' : 'var(--color-dark-grey)',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {f.status === 'done' ? '✓ Uploaded' : f.status === 'error' ? '✗ Error' : f.status === 'uploading' ? `${f.progress}%` : 'Ready'}
+                        </span>
+                        {f.status !== 'uploading' && (
+                          <button className="btn btn-ghost btn-icon" onClick={() => removeFile(idx)} style={{ flexShrink: 0, color: 'var(--color-dark-grey)' }}>✕</button>
                         )}
-                        {f.status === 'error' && <p style={{ fontSize: '0.75rem', color: 'var(--color-error)', marginTop: 2 }}>{f.error}</p>}
                       </div>
-                      <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-ui)', fontWeight: 600, color: f.status === 'done' ? 'var(--color-success)' : f.status === 'error' ? 'var(--color-error)' : f.status === 'uploading' ? 'var(--color-accent)' : 'var(--color-dark-grey)', whiteSpace: 'nowrap' }}>
-                        {f.status === 'done' ? '✓ Done' : f.status === 'error' ? '✗ Error' : f.status === 'uploading' ? `${f.progress}%` : 'Pending'}
-                      </span>
-                      {f.status !== 'uploading' && (
-                        <button className="btn btn-ghost btn-icon" onClick={() => removeFile(idx)} style={{ flexShrink: 0, color: 'var(--color-dark-grey)' }}>✕</button>
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
 
-              {error && <p className="error-text" style={{ marginTop: 12 }}>{error}</p>}
+              {error && <p className="error-text" style={{ marginTop: 14 }}>{error}</p>}
+
               {successCount > 0 && (
-                <p style={{ marginTop: 12, fontFamily: 'var(--font-ui)', fontSize: '0.85rem', color: 'var(--color-success)', fontWeight: 500 }}>
-                  ✓ {successCount} file(s) uploaded successfully.
-                </p>
+                <div style={{
+                  marginTop: 14,
+                  padding: 12,
+                  background: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  borderRadius: 8,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}>
+                  <p style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: '0.85rem', color: 'var(--color-success)', fontWeight: 500 }}>
+                    ✓ {successCount} file(s) added successfully into the folder!
+                  </p>
+                  {lastUploadedFolderId && (
+                    <Link
+                      href={`/admin/media?eventId=${selectedEvent}&attendeeId=${lastUploadedFolderId}`}
+                      className="btn btn-sm btn-outline"
+                      style={{ fontSize: '0.75rem' }}
+                    >
+                      View Folder Media ↗
+                    </Link>
+                  )}
+                </div>
               )}
 
-              <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
+              {/* Upload Action Button */}
+              <div style={{ marginTop: 24, display: 'flex', gap: 12, alignItems: 'center' }}>
                 <button
                   id="upload-btn"
                   className="btn btn-accent btn-lg"
                   onClick={handleUpload}
-                  disabled={uploading || files.filter(f => f.status === 'pending').length === 0}
+                  disabled={
+                    uploading ||
+                    files.filter(f => f.status === 'pending').length === 0 ||
+                    (folderMode === 'existing' && !selectedFolderId) ||
+                    (folderMode === 'new' && !newFolderName.trim())
+                  }
                 >
-                  {uploading ? 'Uploading...' : `Upload ${files.filter(f => f.status === 'pending').length} File(s)`}
+                  {uploading
+                    ? 'Uploading Files to S3...'
+                    : `Upload ${files.filter(f => f.status === 'pending').length} File(s) to ${
+                        folderMode === 'existing'
+                          ? activeSelectedFolder ? `"${activeSelectedFolder.name}"` : 'Selected Folder'
+                          : newFolderName.trim() ? `"${newFolderName.trim()}"` : 'New Folder'
+                      }`}
                 </button>
+
                 {files.length > 0 && !uploading && (
-                  <button className="btn btn-outline" onClick={() => setFiles([])}>Clear All</button>
+                  <button className="btn btn-outline" onClick={() => setFiles([])}>Clear Files</button>
                 )}
               </div>
             </div>
@@ -324,5 +705,13 @@ export default function MediaUploadPage() {
         </div>
       </div>
     </>
+  );
+}
+
+export default function MediaUploadPage() {
+  return (
+    <Suspense fallback={<div className="admin-content"><p>Loading upload console...</p></div>}>
+      <MediaUploadInner />
+    </Suspense>
   );
 }

@@ -4,7 +4,7 @@ import Attendee from '@/models/Attendee';
 import Media from '@/models/Media';
 import { requireAdminAuth } from '@/lib/auth/auth';
 
-// GET /api/attendees?eventId=xxx&page=1&limit=20&search=xxx
+// GET /api/attendees?eventId=xxx&page=1&limit=20&search=xxx&all=true
 export async function GET(request: NextRequest) {
   const auth = await requireAdminAuth(request);
   if (auth instanceof NextResponse) return auth;
@@ -12,8 +12,9 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const eventId = searchParams.get('eventId');
   const search = searchParams.get('search') || '';
+  const all = searchParams.get('all') === 'true';
   const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
-  const limit = Math.min(100, parseInt(searchParams.get('limit') || '20'));
+  const limit = all ? 1000 : Math.min(100, parseInt(searchParams.get('limit') || '20'));
 
   await connectDB();
 
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
 
     const [attendees, total] = await Promise.all([
       Attendee.find(query)
-        .sort({ createdAt: -1 })
+        .sort({ name: 1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/attendees - create or find attendee (admin)
+// POST /api/attendees - create or find attendee/folder (admin)
 export async function POST(request: NextRequest) {
   const auth = await requireAdminAuth(request);
   if (auth instanceof NextResponse) return auth;
@@ -63,38 +64,67 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { eventId, name, email } = body;
+    const { eventId, name, email, downloadPin, attendeeId } = body;
 
-    if (!eventId || !name) {
+    if (attendeeId) {
+      const existing = await Attendee.findById(attendeeId);
+      if (existing) {
+        return NextResponse.json({ attendee: existing }, { status: 200 });
+      }
+    }
+
+    if (!eventId || !name || !name.trim()) {
       return NextResponse.json(
-        { error: 'eventId and name are required.' },
+        { error: 'eventId and folder name are required.' },
         { status: 400 }
       );
     }
 
+    const trimmedName = name.trim();
     const normalizedEmail = email ? email.toLowerCase().trim() : undefined;
+    const escapedName = trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    // Upsert: find or create attendee for this event + email (or name if no email)
-    let query: any = { eventId };
-    if (normalizedEmail) {
-      query.normalizedEmail = normalizedEmail;
-    } else {
-      query.name = name.trim();
-    }
+    // Case-insensitive lookup under the same event
+    let attendee = await Attendee.findOne({
+      eventId,
+      name: { $regex: new RegExp(`^${escapedName}$`, 'i') },
+    });
 
-    let attendee = await Attendee.findOne(query);
-    if (!attendee) {
-      attendee = await Attendee.create({
+    if (!attendee && normalizedEmail) {
+      attendee = await Attendee.findOne({
         eventId,
-        name: name.trim(),
-        ...(email && { email: email.trim() }),
-        ...(normalizedEmail && { normalizedEmail }),
+        normalizedEmail,
       });
     }
 
-    return NextResponse.json({ attendee }, { status: 201 });
+    if (!attendee) {
+      attendee = await Attendee.create({
+        eventId,
+        name: trimmedName,
+        ...(email && { email: email.trim() }),
+        ...(normalizedEmail && { normalizedEmail }),
+        ...(downloadPin && { downloadPin: downloadPin.trim() }),
+      });
+      return NextResponse.json({ attendee }, { status: 201 });
+    } else {
+      // If found existing folder, update email / downloadPin if provided
+      let modified = false;
+      if (email && (!attendee.email || attendee.email !== email.trim())) {
+        attendee.email = email.trim();
+        attendee.normalizedEmail = email.toLowerCase().trim();
+        modified = true;
+      }
+      if (downloadPin !== undefined && attendee.downloadPin !== downloadPin.trim()) {
+        attendee.downloadPin = downloadPin.trim();
+        modified = true;
+      }
+      if (modified) {
+        await attendee.save();
+      }
+      return NextResponse.json({ attendee }, { status: 200 });
+    }
   } catch (error) {
     console.error('POST /api/attendees error:', error);
-    return NextResponse.json({ error: 'Failed to create attendee.' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to create or find folder.' }, { status: 500 });
   }
 }
