@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { formatFileSize } from '@/lib/utils';
+import SearchableSelect from '@/components/admin/SearchableSelect';
 
 interface Event {
   _id: string;
@@ -46,7 +47,6 @@ function MediaUploadInner() {
   const [folderMode, setFolderMode] = useState<'existing' | 'new'>(urlFolderId ? 'existing' : 'existing');
   const [existingFolders, setExistingFolders] = useState<ExistingFolder[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState(urlFolderId);
-  const [folderSearch, setFolderSearch] = useState('');
 
   // New folder fields
   const [newFolderName, setNewFolderName] = useState('');
@@ -62,9 +62,9 @@ function MediaUploadInner() {
   const [loadingFolders, setLoadingFolders] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch events on mount
+  // Fetch all events on mount for autocomplete
   useEffect(() => {
-    fetch('/api/events')
+    fetch('/api/events?all=true')
       .then(r => r.json())
       .then(data => {
         const evList = data.events || [];
@@ -75,7 +75,7 @@ function MediaUploadInner() {
       });
   }, [urlEventId]);
 
-  // Fetch editions and existing folders when event changes
+  // Fetch editions and existing folders when event changes (all=true for dropdown autocomplete)
   const loadFoldersForEvent = (eventId: string) => {
     if (!eventId) return;
     setLoadingFolders(true);
@@ -85,14 +85,12 @@ function MediaUploadInner() {
         const folders: ExistingFolder[] = data.attendees || [];
         setExistingFolders(folders);
 
-        // If URL requested a specific folder, select it
         if (urlFolderId && folders.some(f => f._id === urlFolderId)) {
           setSelectedFolderId(urlFolderId);
           setFolderMode('existing');
         } else if (folders.length > 0 && !selectedFolderId) {
           setSelectedFolderId(folders[0]._id);
         } else if (folders.length === 0) {
-          // If no folders exist, automatically switch to 'new' mode
           setFolderMode('new');
         }
       })
@@ -103,7 +101,7 @@ function MediaUploadInner() {
   useEffect(() => {
     if (!selectedEvent) return;
 
-    fetch(`/api/editions?eventId=${selectedEvent}`)
+    fetch(`/api/editions?eventId=${selectedEvent}&all=true`)
       .then(r => r.json())
       .then(data => {
         const active = (data.editions || []).filter((e: any) => e.status === 'active');
@@ -112,20 +110,13 @@ function MediaUploadInner() {
           setSelectedEdition(urlEditionId);
         } else if (active.length > 0) {
           setSelectedEdition(active[0]._id);
+        } else {
+          setSelectedEdition('');
         }
       });
 
     loadFoldersForEvent(selectedEvent);
   }, [selectedEvent, urlEditionId, urlFolderId]);
-
-  // Filtered list of folders for quick search
-  const filteredFolders = useMemo(() => {
-    if (!folderSearch.trim()) return existingFolders;
-    const query = folderSearch.toLowerCase().trim();
-    return existingFolders.filter(
-      f => f.name.toLowerCase().includes(query) || (f.email && f.email.toLowerCase().includes(query))
-    );
-  }, [existingFolders, folderSearch]);
 
   const activeSelectedFolder = useMemo(() => {
     return existingFolders.find(f => f._id === selectedFolderId) || null;
@@ -176,7 +167,6 @@ function MediaUploadInner() {
     let successCnt = 0;
 
     try {
-      // 1. If in 'new' mode, create or find the folder first
       if (folderMode === 'new') {
         const attendeeRes = await fetch('/api/attendees', {
           method: 'POST',
@@ -199,7 +189,6 @@ function MediaUploadInner() {
 
       setLastUploadedFolderId(targetAttendeeId);
 
-      // 2. Get presigned URLs for pending files
       const pendingFiles = files.filter(f => f.status === 'pending');
       const presignRes = await fetch('/api/uploads/presign', {
         method: 'POST',
@@ -223,7 +212,6 @@ function MediaUploadInner() {
         return;
       }
 
-      // 3. Upload each file to S3
       await Promise.allSettled(
         presignData.results.map(async (result: any) => {
           const fileIdx = files.findIndex(f => f.status === 'pending' && f.file.name === result.name);
@@ -286,11 +274,8 @@ function MediaUploadInner() {
       );
 
       setSuccessCount(prev => prev + successCnt);
-
-      // Refresh existing folders so updated mediaCount is visible
       loadFoldersForEvent(selectedEvent);
 
-      // If a new folder was created, switch to existing mode with this folder selected
       if (folderMode === 'new' && targetAttendeeId) {
         setSelectedFolderId(targetAttendeeId);
         setFolderMode('existing');
@@ -321,7 +306,7 @@ function MediaUploadInner() {
         <div>
           <h2 className="admin-topbar-title">Upload Media</h2>
           <p style={{ fontFamily: 'var(--font-ui)', fontSize: '0.78rem', color: 'var(--color-dark-grey)', marginTop: 2 }}>
-            Add photos & videos directly into new or existing folders
+            Add photos & videos with searchable autocomplete folders
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -340,46 +325,47 @@ function MediaUploadInner() {
             <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 className="card-title">Upload Photos & Videos</h3>
               <span className="badge badge-photo" style={{ fontSize: '0.75rem' }}>
-                Event Media Console
+                Full Autocomplete Enabled
               </span>
             </div>
 
             <div className="card-body">
-              {/* Event / Edition Selection */}
+              {/* Event / Edition Selection with Autocomplete */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
                 <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Event *</label>
-                  <select
+                  <SearchableSelect
                     id="upload-event"
-                    className="form-select"
                     value={selectedEvent}
-                    onChange={e => {
-                      setSelectedEvent(e.target.value);
+                    onChange={val => {
+                      setSelectedEvent(val);
                       setSelectedFolderId('');
                     }}
-                  >
-                    {events.map(ev => (
-                      <option key={ev._id} value={ev._id}>{ev.name}</option>
-                    ))}
-                  </select>
+                    placeholder="Select an Event..."
+                    searchPlaceholder="Search event by name..."
+                    options={events.map(ev => ({
+                      value: ev._id,
+                      label: ev.name,
+                      icon: '📅',
+                    }))}
+                  />
                 </div>
 
                 <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label">Edition *</label>
-                  <select
+                  <SearchableSelect
                     id="upload-edition"
-                    className="form-select"
                     value={selectedEdition}
-                    onChange={e => setSelectedEdition(e.target.value)}
-                  >
-                    {editions.length === 0 ? (
-                      <option value="">No active editions</option>
-                    ) : (
-                      editions.map(ed => (
-                        <option key={ed._id} value={ed._id}>{ed.name}</option>
-                      ))
-                    )}
-                  </select>
+                    onChange={val => setSelectedEdition(val)}
+                    placeholder={editions.length === 0 ? 'No editions available' : 'Select an Edition...'}
+                    searchPlaceholder="Search editions..."
+                    disabled={editions.length === 0}
+                    options={editions.map(ed => ({
+                      value: ed._id,
+                      label: ed.name,
+                      icon: '📑',
+                    }))}
+                  />
                 </div>
               </div>
 
@@ -415,7 +401,7 @@ function MediaUploadInner() {
                   </div>
                 </div>
 
-                {/* MODE 1: Select Existing Folder */}
+                {/* MODE 1: Select Existing Folder with Autocomplete */}
                 {folderMode === 'existing' && (
                   <div>
                     {loadingFolders ? (
@@ -435,34 +421,21 @@ function MediaUploadInner() {
                       </div>
                     ) : (
                       <>
-                        {existingFolders.length > 6 && (
-                          <div style={{ marginBottom: 10 }}>
-                            <input
-                              className="form-input"
-                              style={{ fontSize: '0.82rem', padding: '6px 12px' }}
-                              placeholder="🔍 Search folder by name or email..."
-                              value={folderSearch}
-                              onChange={e => setFolderSearch(e.target.value)}
-                            />
-                          </div>
-                        )}
-
                         <div className="form-group" style={{ margin: 0 }}>
-                          <select
+                          <SearchableSelect
                             id="select-existing-folder"
-                            className="form-select"
                             value={selectedFolderId}
-                            onChange={e => setSelectedFolderId(e.target.value)}
-                            style={{ fontWeight: 500 }}
-                          >
-                            <option value="">-- Choose an existing folder ({filteredFolders.length} available) --</option>
-                            {filteredFolders.map(folder => (
-                              <option key={folder._id} value={folder._id}>
-                                📁 {folder.name} ({folder.mediaCount ?? 0} items)
-                                {folder.email ? ` • ${folder.email}` : ''}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={val => setSelectedFolderId(val)}
+                            placeholder="-- Type or choose an existing folder --"
+                            searchPlaceholder="Type folder name or email..."
+                            options={existingFolders.map(folder => ({
+                              value: folder._id,
+                              label: folder.name,
+                              badge: `${folder.mediaCount ?? 0} files`,
+                              sublabel: folder.email || (folder.downloadPin ? 'PIN Protected' : undefined),
+                              icon: '📁',
+                            }))}
+                          />
                         </div>
 
                         {/* Selected Folder Details Card */}
@@ -496,7 +469,7 @@ function MediaUploadInner() {
                                 </strong>
                               </div>
                               <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: '#15803d' }}>
-                                Contains <strong>{activeSelectedFolder.mediaCount ?? 0}</strong> media files currently.
+                                Currently has <strong>{activeSelectedFolder.mediaCount ?? 0}</strong> media files.
                                 {activeSelectedFolder.email && ` · Email: ${activeSelectedFolder.email}`}
                                 {activeSelectedFolder.downloadPin && ' · PIN Protected'}
                                 {' — All uploaded media will be added directly into this folder.'}

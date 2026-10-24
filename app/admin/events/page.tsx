@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { formatDate } from '@/lib/utils';
+import { useDebounce } from '@/lib/useDebounce';
 
 interface Event {
   _id: string;
@@ -12,6 +13,13 @@ interface Event {
   editionCount?: number;
   mediaCount?: number;
   createdAt: string;
+}
+
+interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
 }
 
 function slugify(str: string): string {
@@ -26,23 +34,35 @@ function slugify(str: string): string {
 export default function EventsPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
+  const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 10, total: 0, pages: 0 });
+
   const [showForm, setShowForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [form, setForm] = useState({ name: '', slug: '', description: '', active: true });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  async function loadEvents() {
+  const loadEvents = useCallback(async (page = 1) => {
     setLoading(true);
     try {
-      const res = await fetch('/api/events');
+      const params = new URLSearchParams({ page: String(page), limit: '10' });
+      if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
+      const res = await fetch(`/api/events?${params}`);
       const data = await res.json();
       setEvents(data.events || []);
-    } catch { setError('Failed to load events.'); }
-    finally { setLoading(false); }
-  }
+      setPagination(data.pagination || { page: 1, limit: 10, total: 0, pages: 0 });
+    } catch {
+      setError('Failed to load events.');
+    } finally {
+      setLoading(false);
+    }
+  }, [debouncedSearch]);
 
-  useEffect(() => { loadEvents(); }, []);
+  useEffect(() => {
+    loadEvents(1);
+  }, [loadEvents]);
 
   function openNew() {
     setEditingEvent(null);
@@ -76,7 +96,7 @@ export default function EventsPage() {
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Failed to save.'); return; }
       setShowForm(false);
-      loadEvents();
+      loadEvents(pagination.page);
     } catch { setError('Network error.'); }
     finally { setSaving(false); }
   }
@@ -87,25 +107,64 @@ export default function EventsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !event.active }),
     });
-    loadEvents();
+    loadEvents(pagination.page);
   }
 
   async function handleDelete(event: Event) {
     if (!confirm(`Delete event "${event.name}"? This cannot be undone.`)) return;
     await fetch(`/api/events/${event._id}`, { method: 'DELETE' });
-    loadEvents();
+    loadEvents(pagination.page);
   }
 
   return (
     <>
       <div className="admin-topbar">
-        <h2 className="admin-topbar-title">Events</h2>
+        <div>
+          <h2 className="admin-topbar-title">Events</h2>
+          <p style={{ fontFamily: 'var(--font-ui)', fontSize: '0.8rem', color: 'var(--color-dark-grey)', marginTop: 2 }}>
+            {pagination.total} event(s) total · Paginated to 10 per page
+          </p>
+        </div>
         <button id="new-event-btn" className="btn btn-accent btn-sm" onClick={openNew}>
           + New Event
         </button>
       </div>
 
       <div className="admin-content">
+        {/* Search Bar */}
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card-body" style={{ paddingTop: 14, paddingBottom: 14 }}>
+            <div className="search-wrapper" style={{ maxWidth: 360 }}>
+              <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+              </svg>
+              <input
+                className="search-input"
+                placeholder="Search events by name or slug..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{ width: '100%' }}
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  style={{
+                    position: 'absolute',
+                    right: 12,
+                    background: 'none',
+                    border: 'none',
+                    color: '#94a3b8',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         <div className="table-wrapper">
           {loading ? (
             <div style={{ padding: '40px', textAlign: 'center', color: 'var(--color-dark-grey)', fontFamily: 'var(--font-ui)' }}>
@@ -118,8 +177,8 @@ export default function EventsPage() {
                   <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
                 </svg>
               </div>
-              <h3>No events yet</h3>
-              <p>Create your first event to get started.</p>
+              <h3>No events found</h3>
+              <p>{search ? 'Try a different search term.' : 'Create your first event to get started.'}</p>
               <button className="btn btn-accent" style={{ marginTop: 16 }} onClick={openNew}>Create Event</button>
             </div>
           ) : (
@@ -171,6 +230,17 @@ export default function EventsPage() {
             </table>
           )}
         </div>
+
+        {/* Pagination */}
+        {pagination.pages > 1 && (
+          <div className="pagination">
+            <button className="page-btn" disabled={pagination.page <= 1} onClick={() => loadEvents(pagination.page - 1)}>‹</button>
+            {Array.from({ length: Math.min(pagination.pages, 7) }, (_, i) => i + 1).map(p => (
+              <button key={p} className={`page-btn ${pagination.page === p ? 'active' : ''}`} onClick={() => loadEvents(p)}>{p}</button>
+            ))}
+            <button className="page-btn" disabled={pagination.page >= pagination.pages} onClick={() => loadEvents(pagination.page + 1)}>›</button>
+          </div>
+        )}
       </div>
 
       {/* Create/Edit Modal */}
@@ -187,11 +257,15 @@ export default function EventsPage() {
                 <input
                   id="event-name-input"
                   className="form-input"
-                  placeholder="e.g. WHITE COAT CLUB"
+                  placeholder="e.g. White Coat Club Gala"
                   value={form.name}
                   onChange={(e) => {
                     const name = e.target.value;
-                    setForm((f) => ({ ...f, name, ...(editingEvent ? {} : { slug: slugify(name) }) }));
+                    setForm((f) => ({
+                      ...f,
+                      name,
+                      slug: !editingEvent ? slugify(name) : f.slug,
+                    }));
                   }}
                 />
               </div>
@@ -200,32 +274,32 @@ export default function EventsPage() {
                 <input
                   id="event-slug-input"
                   className="form-input"
-                  placeholder="white-coat-club"
+                  placeholder="e.g. white-coat-club-gala"
                   value={form.slug}
                   onChange={(e) => setForm((f) => ({ ...f, slug: slugify(e.target.value) }))}
                 />
                 <p style={{ fontSize: '0.75rem', color: 'var(--color-dark-grey)', marginTop: 4, fontFamily: 'var(--font-ui)' }}>
-                  URL: /{form.slug}/gallery
+                  Used in URL: /event-slug/gallery
                 </p>
               </div>
               <div className="form-group">
                 <label className="form-label">Description</label>
                 <textarea
                   className="form-textarea"
-                  placeholder="A brief description of the event..."
+                  placeholder="Optional description of this event..."
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                 />
               </div>
               <div className="form-group">
-                <label className="checkbox-wrapper">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'var(--font-ui)', fontSize: '0.875rem' }}>
                   <input
-                    className="checkbox-input"
                     type="checkbox"
                     checked={form.active}
                     onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
+                    style={{ width: 16, height: 16, accentColor: 'var(--color-accent)' }}
                   />
-                  <span className="checkbox-label">Event is active (visible to attendees)</span>
+                  Active (visible in public gallery)
                 </label>
               </div>
               {error && <p className="error-text">{error}</p>}
@@ -233,7 +307,7 @@ export default function EventsPage() {
             <div className="modal-footer">
               <button className="btn btn-outline" onClick={() => setShowForm(false)}>Cancel</button>
               <button id="save-event-btn" className="btn btn-accent" onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving...' : 'Save Event'}
+                {saving ? 'Saving...' : editingEvent ? 'Save Changes' : 'Create Event'}
               </button>
             </div>
           </div>

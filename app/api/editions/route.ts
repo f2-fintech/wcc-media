@@ -4,20 +4,55 @@ import Edition from '@/models/Edition';
 import Media from '@/models/Media';
 import { requireAdminAuth } from '@/lib/auth/auth';
 
-// GET /api/editions?eventId=xxx
+// GET /api/editions?eventId=xxx&page=1&limit=15&all=true&search=xxx
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const eventId = searchParams.get('eventId');
+  const all = searchParams.get('all') === 'true';
+  const search = searchParams.get('search') || '';
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+  const limit = all ? 500 : Math.min(100, parseInt(searchParams.get('limit') || '15'));
 
-  // Public endpoint for gallery (no auth required for active editions)
   await connectDB();
 
   try {
     const query: Record<string, unknown> = {};
     if (eventId) query.eventId = eventId;
+    if (search.trim()) {
+      query.$or = [
+        { name: { $regex: search.trim(), $options: 'i' } },
+        { slug: { $regex: search.trim().toLowerCase(), $options: 'i' } },
+      ];
+    }
 
-    const editions = await Edition.find(query).sort({ order: 1, createdAt: 1 }).lean();
-    return NextResponse.json({ editions });
+    const [editions, total] = await Promise.all([
+      all
+        ? Edition.find(query).sort({ order: 1, createdAt: 1 }).lean()
+        : Edition.find(query)
+            .sort({ order: 1, createdAt: 1 })
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .lean(),
+      Edition.countDocuments(query),
+    ]);
+
+    // Attach media count to each edition
+    const editionsWithStats = await Promise.all(
+      editions.map(async (ed) => {
+        const mediaCount = await Media.countDocuments({ editionId: ed._id });
+        return { ...ed, mediaCount };
+      })
+    );
+
+    return NextResponse.json({
+      editions: editionsWithStats,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    });
   } catch (error) {
     console.error('GET /api/editions error:', error);
     return NextResponse.json({ error: 'Failed to fetch editions.' }, { status: 500 });

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { formatFileSize } from '@/lib/utils';
+import SearchableSelect from '@/components/admin/SearchableSelect';
 
 interface Event { _id: string; name: string; }
 interface Edition { _id: string; name: string; }
@@ -44,18 +45,16 @@ function MediaPageInner() {
   const [deleting, setDeleting] = useState(false);
   const [previewMedia, setPreviewMedia] = useState<MediaItem | null>(null);
 
+  // Load all events for autocomplete dropdown
   useEffect(() => {
-    fetch('/api/events')
+    fetch('/api/events?all=true')
       .then(r => r.json())
       .then(d => {
-        const evList = d.events || [];
-        setEvents(evList);
-        if (!urlEventId && evList.length > 0) {
-          // keep empty or let user pick All Events
-        }
+        setEvents(d.events || []);
       });
   }, [urlEventId]);
 
+  // Load all editions and folders for selected event
   useEffect(() => {
     if (!filterEvent) {
       setEditions([]);
@@ -65,13 +64,13 @@ function MediaPageInner() {
       return;
     }
 
-    // Load editions
-    fetch(`/api/editions?eventId=${filterEvent}`)
+    // Load editions (all=true for dropdown autocomplete)
+    fetch(`/api/editions?eventId=${filterEvent}&all=true`)
       .then(r => r.json())
       .then(d => setEditions(d.editions || []));
     setFilterEdition('');
 
-    // Load folders for this event
+    // Load folders (all=true for dropdown autocomplete)
     fetch(`/api/attendees?eventId=${filterEvent}&all=true`)
       .then(r => r.json())
       .then(d => {
@@ -83,6 +82,7 @@ function MediaPageInner() {
       });
   }, [filterEvent, urlAttendeeId]);
 
+  // Paginated media loading (rate limited per page to 24 items)
   const loadMedia = useCallback(async (page = 1) => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), limit: '24' });
@@ -148,7 +148,7 @@ function MediaPageInner() {
         <div>
           <h2 className="admin-topbar-title">All Media</h2>
           <p style={{ fontFamily: 'var(--font-ui)', fontSize: '0.8rem', color: 'var(--color-dark-grey)', marginTop: 2 }}>
-            Manage and view photos & videos across all folders
+            Manage media with autocomplete searchable filters
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -192,7 +192,7 @@ function MediaPageInner() {
                   Folder: {selectedFolderObj.name}
                 </strong>
                 <p style={{ margin: 0, fontSize: '0.8rem', color: '#15803d' }}>
-                  Showing {pagination.total} files inside this folder
+                  Showing {pagination.total} files inside this folder (paginated to 24 per page)
                 </p>
               </div>
             </div>
@@ -216,56 +216,101 @@ function MediaPageInner() {
           </div>
         )}
 
-        {/* Filters */}
+        {/* Filters with Autocomplete SearchableSelect */}
         <div className="card" style={{ marginBottom: 24 }}>
           <div className="card-body" style={{ paddingTop: 16, paddingBottom: 16 }}>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              <div>
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              {/* Event Autocomplete */}
+              <div style={{ minWidth: 200, flex: '1 1 200px' }}>
                 <label className="form-label">Event</label>
-                <select className="form-select" style={{ minWidth: 180 }} value={filterEvent} onChange={e => setFilterEvent(e.target.value)}>
-                  <option value="">All Events</option>
-                  {events.map(ev => <option key={ev._id} value={ev._id}>{ev.name}</option>)}
-                </select>
+                <SearchableSelect
+                  value={filterEvent}
+                  onChange={val => {
+                    setFilterEvent(val);
+                    setFilterAttendee('');
+                    setFilterEdition('');
+                  }}
+                  placeholder="All Events"
+                  allOptionLabel="All Events"
+                  allOptionValue=""
+                  searchPlaceholder="Search events..."
+                  options={events.map(ev => ({
+                    value: ev._id,
+                    label: ev.name,
+                    icon: '📅',
+                  }))}
+                />
               </div>
 
-              <div>
+              {/* Folder Autocomplete */}
+              <div style={{ minWidth: 220, flex: '1 1 220px' }}>
                 <label className="form-label">Folder</label>
-                <select
-                  className="form-select"
-                  style={{ minWidth: 180 }}
+                <SearchableSelect
                   value={filterAttendee}
-                  onChange={e => setFilterAttendee(e.target.value)}
+                  onChange={val => setFilterAttendee(val)}
+                  placeholder={!filterEvent ? 'Select event first' : 'All Folders'}
+                  allOptionLabel="All Folders"
+                  allOptionValue=""
                   disabled={!filterEvent}
-                >
-                  <option value="">All Folders</option>
-                  {attendees.map(att => (
-                    <option key={att._id} value={att._id}>
-                      📁 {att.name} ({att.mediaCount ?? 0})
-                    </option>
-                  ))}
-                </select>
+                  searchPlaceholder="Type folder name or email..."
+                  options={attendees.map(att => ({
+                    value: att._id,
+                    label: att.name,
+                    badge: `${att.mediaCount ?? 0} files`,
+                    icon: '📁',
+                  }))}
+                />
               </div>
 
-              <div>
+              {/* Edition Autocomplete */}
+              <div style={{ minWidth: 180, flex: '1 1 180px' }}>
                 <label className="form-label">Edition</label>
-                <select className="form-select" style={{ minWidth: 160 }} value={filterEdition} onChange={e => setFilterEdition(e.target.value)} disabled={!filterEvent}>
-                  <option value="">All Editions</option>
-                  {editions.map(ed => <option key={ed._id} value={ed._id}>{ed.name}</option>)}
-                </select>
+                <SearchableSelect
+                  value={filterEdition}
+                  onChange={val => setFilterEdition(val)}
+                  placeholder={!filterEvent ? 'Select event first' : 'All Editions'}
+                  allOptionLabel="All Editions"
+                  allOptionValue=""
+                  disabled={!filterEvent}
+                  searchPlaceholder="Search editions..."
+                  options={editions.map(ed => ({
+                    value: ed._id,
+                    label: ed.name,
+                    icon: '📑',
+                  }))}
+                />
               </div>
 
-              <div>
+              {/* Type Autocomplete */}
+              <div style={{ minWidth: 150, flex: '1 1 150px' }}>
                 <label className="form-label">Type</label>
-                <select className="form-select" style={{ minWidth: 120 }} value={filterType} onChange={e => setFilterType(e.target.value)}>
-                  <option value="">All Types</option>
-                  <option value="photo">Photos</option>
-                  <option value="video">Videos</option>
-                </select>
+                <SearchableSelect
+                  value={filterType}
+                  onChange={val => setFilterType(val)}
+                  placeholder="All Types"
+                  allOptionLabel="All Types"
+                  allOptionValue=""
+                  options={[
+                    { value: 'photo', label: 'Photos Only', icon: '📷' },
+                    { value: 'video', label: 'Videos Only', icon: '🎥' },
+                  ]}
+                />
               </div>
 
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, paddingBottom: 2 }}>
                 <button className="btn btn-outline btn-sm" onClick={selectAll}>Select All</button>
-                <button className="btn btn-outline btn-sm" onClick={() => setSelected(new Set())}>Clear</button>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => {
+                    setSelected(new Set());
+                    setFilterEvent('');
+                    setFilterAttendee('');
+                    setFilterEdition('');
+                    setFilterType('');
+                  }}
+                >
+                  Reset
+                </button>
               </div>
             </div>
           </div>
@@ -273,7 +318,7 @@ function MediaPageInner() {
 
         {/* Stats */}
         <p style={{ fontFamily: 'var(--font-ui)', fontSize: '0.8rem', color: 'var(--color-dark-grey)', marginBottom: 16 }}>
-          {loading ? 'Loading...' : `${pagination.total.toLocaleString()} items`}
+          {loading ? 'Loading media...' : `${pagination.total.toLocaleString()} total items · Page ${pagination.page} of ${Math.max(1, pagination.pages)}`}
           {selected.size > 0 && ` · ${selected.size} selected`}
         </p>
 
@@ -287,7 +332,7 @@ function MediaPageInner() {
         ) : media.length === 0 ? (
           <div className="empty-state">
             <h3>No media found</h3>
-            <p>Try adjusting filters or upload some media to this folder.</p>
+            <p>Try adjusting your search filters or upload new media into this folder.</p>
             {filterEvent && (
               <div style={{ marginTop: 14 }}>
                 <Link
@@ -424,7 +469,7 @@ function MediaPageInner() {
           </div>
         )}
 
-        {/* Pagination */}
+        {/* Pagination Controls */}
         {pagination.pages > 1 && (
           <div className="pagination">
             <button className="page-btn" disabled={pagination.page <= 1} onClick={() => loadMedia(pagination.page - 1)}>‹</button>

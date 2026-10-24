@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import SearchableSelect from '@/components/admin/SearchableSelect';
 
 interface Event { _id: string; name: string; desktopBanner?: { s3Url: string }; mobileBanner?: { s3Url: string }; }
 
@@ -18,9 +19,10 @@ export default function BannerPage() {
   const mobileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch('/api/events').then(r => r.json()).then(d => {
-      setEvents(d.events || []);
-      if (d.events?.length) setSelectedEvent(d.events[0]._id);
+    fetch('/api/events?all=true').then(r => r.json()).then(d => {
+      const evList = d.events || [];
+      setEvents(evList);
+      if (evList.length > 0) setSelectedEvent(evList[0]._id);
     });
   }, []);
 
@@ -96,18 +98,33 @@ export default function BannerPage() {
   return (
     <>
       <div className="admin-topbar">
-        <h2 className="admin-topbar-title">Banner Management</h2>
+        <div>
+          <h2 className="admin-topbar-title">Banner Management</h2>
+          <p style={{ fontFamily: 'var(--font-ui)', fontSize: '0.8rem', color: 'var(--color-dark-grey)', marginTop: 2 }}>
+            Configure desktop and mobile banner heroes
+          </p>
+        </div>
       </div>
 
       <div className="admin-content">
         {/* Event selector */}
         <div className="card" style={{ marginBottom: 24 }}>
           <div className="card-body" style={{ paddingTop: 16, paddingBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <label className="form-label" style={{ margin: 0, whiteSpace: 'nowrap' }}>Event:</label>
-              <select className="form-select" style={{ maxWidth: 300 }} value={selectedEvent} onChange={e => setSelectedEvent(e.target.value)}>
-                {events.map(ev => <option key={ev._id} value={ev._id}>{ev.name}</option>)}
-              </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+              <label className="form-label" style={{ margin: 0, whiteSpace: 'nowrap' }}>Select Event:</label>
+              <div style={{ minWidth: 280, maxWidth: 400, flex: 1 }}>
+                <SearchableSelect
+                  value={selectedEvent}
+                  onChange={val => setSelectedEvent(val)}
+                  placeholder="Select an Event..."
+                  searchPlaceholder="Search events..."
+                  options={events.map(ev => ({
+                    value: ev._id,
+                    label: ev.name,
+                    icon: '📅',
+                  }))}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -135,8 +152,14 @@ export default function BannerPage() {
               </div>
               <input ref={desktopRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && handleFileSelect(e.target.files[0], 'desktop')} />
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-outline btn-sm" onClick={() => desktopRef.current?.click()}>Replace</button>
-                {desktopPreview && <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-error)' }} onClick={() => handleDeleteBanner('desktop')}>Delete</button>}
+                <button className="btn btn-outline btn-sm" onClick={() => desktopRef.current?.click()}>
+                  {desktopPreview ? 'Replace Desktop Banner' : 'Select Desktop Banner'}
+                </button>
+                {desktopPreview && (
+                  <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-error)' }} onClick={() => handleDeleteBanner('desktop')}>
+                    Remove
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -146,7 +169,7 @@ export default function BannerPage() {
             <div className="card-header"><h3 className="card-title">Mobile Banner</h3></div>
             <div className="card-body">
               <div
-                style={{ width: '100%', aspectRatio: '9/5', background: 'var(--color-cream)', borderRadius: 'var(--radius-md)', overflow: 'hidden', marginBottom: 16, position: 'relative', cursor: 'pointer' }}
+                style={{ width: '100%', aspectRatio: '9/16', maxHeight: 320, background: 'var(--color-cream)', borderRadius: 'var(--radius-md)', overflow: 'hidden', marginBottom: 16, position: 'relative', cursor: 'pointer', margin: '0 auto 16px' }}
                 onClick={() => mobileRef.current?.click()}
               >
                 {mobilePreview ? (
@@ -157,26 +180,35 @@ export default function BannerPage() {
                       <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
                     </svg>
                     <p style={{ fontSize: '0.8rem', marginTop: 8, fontFamily: 'var(--font-ui)' }}>Click to select mobile banner</p>
-                    <p style={{ fontSize: '0.7rem', color: 'var(--color-light-grey)' }}>Recommended: 768×500</p>
+                    <p style={{ fontSize: '0.7rem', color: 'var(--color-light-grey)' }}>Recommended: 750×1334</p>
                   </div>
                 )}
               </div>
               <input ref={mobileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && handleFileSelect(e.target.files[0], 'mobile')} />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-outline btn-sm" onClick={() => mobileRef.current?.click()}>Replace</button>
-                {mobilePreview && <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-error)' }} onClick={() => handleDeleteBanner('mobile')}>Delete</button>}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                <button className="btn btn-outline btn-sm" onClick={() => mobileRef.current?.click()}>
+                  {mobilePreview ? 'Replace Mobile Banner' : 'Select Mobile Banner'}
+                </button>
+                {mobilePreview && (
+                  <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-error)' }} onClick={() => handleDeleteBanner('mobile')}>
+                    Remove
+                  </button>
+                )}
               </div>
             </div>
           </div>
         </div>
 
-        <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: 16 }}>
-          <button id="save-banner-btn" className="btn btn-accent btn-lg" onClick={handleSave} disabled={uploading || (!desktopFile && !mobileFile)}>
-            {uploading ? 'Saving...' : 'Save Banners'}
-          </button>
-          {message && <p style={{ color: 'var(--color-success)', fontFamily: 'var(--font-ui)', fontSize: '0.875rem' }}>✓ {message}</p>}
-          {error && <p className="error-text">{error}</p>}
-        </div>
+        {error && <p className="error-text" style={{ marginTop: 16 }}>{error}</p>}
+        {message && <p style={{ color: 'var(--color-success)', marginTop: 16, fontFamily: 'var(--font-ui)', fontSize: '0.875rem' }}>✓ {message}</p>}
+
+        {(desktopFile || mobileFile) && (
+          <div style={{ marginTop: 24 }}>
+            <button className="btn btn-accent btn-lg" onClick={handleSave} disabled={uploading}>
+              {uploading ? 'Uploading to S3...' : 'Save and Publish Banners'}
+            </button>
+          </div>
+        )}
       </div>
     </>
   );

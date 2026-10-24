@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import SearchableSelect from '@/components/admin/SearchableSelect';
+import { useDebounce } from '@/lib/useDebounce';
 
 interface Event { _id: string; name: string; }
 interface Attendee {
@@ -20,6 +22,8 @@ export default function AttendeesPage() {
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [filterEvent, setFilterEvent] = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
+
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 20, total: 0, pages: 0 });
   const [loading, setLoading] = useState(false);
 
@@ -36,8 +40,9 @@ export default function AttendeesPage() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  // Fetch all events for autocomplete dropdown
   useEffect(() => {
-    fetch('/api/events')
+    fetch('/api/events?all=true')
       .then(r => r.json())
       .then(d => {
         const evList = d.events || [];
@@ -48,18 +53,20 @@ export default function AttendeesPage() {
       });
   }, []);
 
+  // Paginated load with debounced search
   const loadAttendees = useCallback(async (page = 1) => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), limit: '20' });
     if (filterEvent) params.set('eventId', filterEvent);
-    if (search) params.set('search', search);
+    if (debouncedSearch) params.set('search', debouncedSearch);
+
     try {
       const res = await fetch(`/api/attendees?${params}`);
       const data = await res.json();
       setAttendees(data.attendees || []);
       setPagination(data.pagination || { page: 1, limit: 20, total: 0, pages: 0 });
     } finally { setLoading(false); }
-  }, [filterEvent, search]);
+  }, [filterEvent, debouncedSearch]);
 
   useEffect(() => { loadAttendees(1); }, [loadAttendees]);
 
@@ -137,7 +144,7 @@ export default function AttendeesPage() {
         <div>
           <h2 className="admin-topbar-title">Media Folders</h2>
           <p style={{ fontFamily: 'var(--font-ui)', fontSize: '0.8rem', color: 'var(--color-dark-grey)', marginTop: 2 }}>
-            {pagination.total.toLocaleString()} folder(s) total
+            {pagination.total.toLocaleString()} folder(s) total · Paginated to 20 per page
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -166,26 +173,54 @@ export default function AttendeesPage() {
           </div>
         )}
 
-        {/* Filters */}
+        {/* Filters with SearchableSelect and Debounced Search */}
         <div className="card" style={{ marginBottom: 24 }}>
           <div className="card-body" style={{ paddingTop: 16, paddingBottom: 16 }}>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-              <select className="form-select" style={{ minWidth: 200 }} value={filterEvent} onChange={e => setFilterEvent(e.target.value)}>
-                <option value="">All Events</option>
-                {events.map(ev => <option key={ev._id} value={ev._id}>{ev.name}</option>)}
-              </select>
-              <div className="search-wrapper" style={{ flex: 1, minWidth: 260 }}>
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ minWidth: 220, flex: '1 1 220px' }}>
+                <SearchableSelect
+                  value={filterEvent}
+                  onChange={val => setFilterEvent(val)}
+                  placeholder="All Events"
+                  allOptionLabel="All Events"
+                  allOptionValue=""
+                  searchPlaceholder="Search event..."
+                  options={events.map(ev => ({
+                    value: ev._id,
+                    label: ev.name,
+                    icon: '📅',
+                  }))}
+                />
+              </div>
+
+              <div className="search-wrapper" style={{ flex: '2 1 300px', minWidth: 260 }}>
                 <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
                 </svg>
                 <input
                   id="attendee-search"
                   className="search-input"
-                  placeholder="Search folders by name or email..."
+                  placeholder="Search folders by name or email (debounced)..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   style={{ width: '100%' }}
                 />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    style={{
+                      position: 'absolute',
+                      right: 12,
+                      background: 'none',
+                      border: 'none',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -264,7 +299,6 @@ export default function AttendeesPage() {
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                        {/* Direct Add Images button */}
                         <Link
                           href={`/admin/media/upload?eventId=${a.eventId}&folderId=${a._id}`}
                           className="btn btn-accent btn-sm"
@@ -329,15 +363,17 @@ export default function AttendeesPage() {
             <div className="modal-body">
               <div className="form-group">
                 <label className="form-label">Event *</label>
-                <select
-                  className="form-select"
+                <SearchableSelect
                   value={createForm.eventId}
-                  onChange={e => setCreateForm(f => ({ ...f, eventId: e.target.value }))}
-                >
-                  {events.map(ev => (
-                    <option key={ev._id} value={ev._id}>{ev.name}</option>
-                  ))}
-                </select>
+                  onChange={val => setCreateForm(f => ({ ...f, eventId: val }))}
+                  placeholder="Select an Event..."
+                  searchPlaceholder="Search event..."
+                  options={events.map(ev => ({
+                    value: ev._id,
+                    label: ev.name,
+                    icon: '📅',
+                  }))}
+                />
               </div>
 
               <div className="form-group">
