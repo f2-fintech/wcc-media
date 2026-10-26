@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { slugify } from '@/lib/utils';
 import SearchableSelect from '@/components/admin/SearchableSelect';
 import { useDebounce } from '@/lib/useDebounce';
@@ -235,6 +236,14 @@ export default function EditionsPage() {
                     <td style={{ color: 'var(--color-dark-grey)', fontSize: '0.8rem' }}>{new Date(ed.createdAt).toLocaleDateString()}</td>
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
+                        <Link
+                          href={`/admin/banner?eventId=${selectedEventId}&editionId=${ed._id}`}
+                          className="btn btn-ghost btn-sm"
+                          title="Manage Banner for this Edition"
+                          style={{ textDecoration: 'none' }}
+                        >
+                          🖼️ Banner
+                        </Link>
                         <button className="btn btn-ghost btn-sm" onClick={() => openEdit(ed)}>Edit</button>
                         <button
                           className="btn btn-ghost btn-sm"

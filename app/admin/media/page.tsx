@@ -45,6 +45,23 @@ function MediaPageInner() {
   const [deleting, setDeleting] = useState(false);
   const [previewMedia, setPreviewMedia] = useState<MediaItem | null>(null);
 
+  // Move to Folder modal states
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [moveItemIds, setMoveItemIds] = useState<string[]>([]);
+  const [moveEvent, setMoveEvent] = useState('');
+  const [moveEdition, setMoveEdition] = useState('');
+  const [moveFolderId, setMoveFolderId] = useState('');
+  const [moveEditionsList, setMoveEditionsList] = useState<Edition[]>([]);
+  const [moveFoldersList, setMoveFoldersList] = useState<AttendeeFolder[]>([]);
+  const [loadingMoveFolders, setLoadingMoveFolders] = useState(false);
+  const [moveMode, setMoveMode] = useState<'existing' | 'new'>('existing');
+  const [moveNewName, setMoveNewName] = useState('');
+  const [moveNewEmail, setMoveNewEmail] = useState('');
+  const [moveNewPin, setMoveNewPin] = useState('');
+  const [moving, setMoving] = useState(false);
+  const [moveError, setMoveError] = useState('');
+  const [moveSuccessMsg, setMoveSuccessMsg] = useState('');
+
   // Load all events for autocomplete dropdown
   useEffect(() => {
     fetch('/api/events?all=true')
@@ -150,6 +167,178 @@ function MediaPageInner() {
     if (data.media?.viewUrl) window.open(data.media.viewUrl, '_blank');
   }
 
+  function loadMoveFolders(evId: string, edId: string) {
+    if (!evId || !edId) {
+      setMoveFoldersList([]);
+      setMoveFolderId('');
+      return;
+    }
+    setLoadingMoveFolders(true);
+    fetch(`/api/attendees?eventId=${evId}&editionId=${edId}&all=true`)
+      .then(r => r.json())
+      .then(d => {
+        const fList: AttendeeFolder[] = d.attendees || [];
+        setMoveFoldersList(fList);
+        if (fList.length > 0) {
+          setMoveFolderId(fList[0]._id);
+          setMoveMode('existing');
+        } else {
+          setMoveFolderId('');
+          setMoveMode('new');
+        }
+      })
+      .finally(() => setLoadingMoveFolders(false));
+  }
+
+  function openMoveModal(ids?: string[]) {
+    const targets = ids && ids.length > 0 ? ids : Array.from(selected);
+    if (targets.length === 0) return;
+
+    setMoveItemIds(targets);
+    setMoveError('');
+    setShowMoveModal(true);
+
+    const initialEv = filterEvent || (events.length > 0 ? events[0]._id : '');
+    setMoveEvent(initialEv);
+
+    if (initialEv) {
+      fetch(`/api/editions?eventId=${initialEv}&all=true`)
+        .then(r => r.json())
+        .then(d => {
+          const eds: Edition[] = (d.editions || []).filter((e: any) => e.status === 'active');
+          setMoveEditionsList(eds);
+          const initialEd = (filterEdition && eds.some(e => e._id === filterEdition))
+            ? filterEdition
+            : (eds.length > 0 ? eds[0]._id : '');
+          setMoveEdition(initialEd);
+
+          if (initialEd) {
+            loadMoveFolders(initialEv, initialEd);
+          } else {
+            setMoveFoldersList([]);
+            setMoveFolderId('');
+            setMoveMode('new');
+          }
+        });
+    } else {
+      setMoveEditionsList([]);
+      setMoveFoldersList([]);
+      setMoveFolderId('');
+    }
+  }
+
+  function handleMoveEventChange(evId: string) {
+    setMoveEvent(evId);
+    setMoveEdition('');
+    setMoveFolderId('');
+    if (evId) {
+      fetch(`/api/editions?eventId=${evId}&all=true`)
+        .then(r => r.json())
+        .then(d => {
+          const eds: Edition[] = (d.editions || []).filter((e: any) => e.status === 'active');
+          setMoveEditionsList(eds);
+          if (eds.length > 0) {
+            setMoveEdition(eds[0]._id);
+            loadMoveFolders(evId, eds[0]._id);
+          } else {
+            setMoveFoldersList([]);
+            setMoveMode('new');
+          }
+        });
+    } else {
+      setMoveEditionsList([]);
+      setMoveFoldersList([]);
+    }
+  }
+
+  function handleMoveEditionChange(edId: string) {
+    setMoveEdition(edId);
+    setMoveFolderId('');
+    if (moveEvent && edId) {
+      loadMoveFolders(moveEvent, edId);
+    } else {
+      setMoveFoldersList([]);
+    }
+  }
+
+  async function handleExecuteMove() {
+    setMoveError('');
+    if (!moveEvent) {
+      setMoveError('Please select a target event.');
+      return;
+    }
+    if (!moveEdition) {
+      setMoveError('Please select a target edition.');
+      return;
+    }
+
+    if (moveMode === 'existing') {
+      if (!moveFolderId) {
+        setMoveError('Please select an existing folder to move media into.');
+        return;
+      }
+    } else {
+      if (!moveNewName.trim()) {
+        setMoveError('Folder name is required.');
+        return;
+      }
+    }
+
+    setMoving(true);
+    try {
+      const payload: any = {
+        mediaIds: moveItemIds,
+      };
+
+      if (moveMode === 'existing') {
+        payload.targetFolderId = moveFolderId;
+      } else {
+        payload.newFolder = {
+          eventId: moveEvent,
+          editionId: moveEdition,
+          name: moveNewName.trim(),
+          email: moveNewEmail.trim() || undefined,
+          downloadPin: moveNewPin.trim() || undefined,
+        };
+      }
+
+      const res = await fetch('/api/media/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setMoveError(data.error || 'Failed to move media.');
+        return;
+      }
+
+      setShowMoveModal(false);
+      setMoveSuccessMsg(`✓ Moved ${data.movedCount} photo(s)/video(s) to folder "${data.targetFolder?.name}" successfully!`);
+      setTimeout(() => setMoveSuccessMsg(''), 5000);
+      setSelected(new Set());
+      setMoveNewName('');
+      setMoveNewEmail('');
+      setMoveNewPin('');
+
+      // Refresh current media list and folders
+      loadMedia(pagination.page);
+
+      // Refresh attendees/folders list
+      const editionParam = filterEdition ? `&editionId=${filterEdition}` : '';
+      if (filterEvent) {
+        fetch(`/api/attendees?eventId=${filterEvent}${editionParam}&all=true`)
+          .then(r => r.json())
+          .then(d => setAttendees(d.attendees || []));
+      }
+    } catch {
+      setMoveError('Network error while moving media.');
+    } finally {
+      setMoving(false);
+    }
+  }
+
   const selectedFolderObj = attendees.find(a => a._id === filterAttendee);
 
   return (
@@ -175,14 +364,37 @@ function MediaPageInner() {
             ⬆️ Upload Media
           </Link>
           {selected.size > 0 && (
-            <button className="btn btn-danger btn-sm" onClick={handleBulkDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : `Delete ${selected.size} Selected`}
-            </button>
+            <>
+              <button
+                className="btn btn-accent btn-sm"
+                onClick={() => openMoveModal()}
+                style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              >
+                📁 Move {selected.size} to Folder
+              </button>
+              <button className="btn btn-danger btn-sm" onClick={handleBulkDelete} disabled={deleting}>
+                {deleting ? 'Deleting...' : `Delete ${selected.size} Selected`}
+              </button>
+            </>
           )}
         </div>
       </div>
 
       <div className="admin-content">
+        {moveSuccessMsg && (
+          <div style={{
+            marginBottom: 20,
+            padding: '12px 16px',
+            background: '#f0fdf4',
+            border: '1px solid #bbf7d0',
+            borderRadius: 8,
+            color: '#166534',
+            fontWeight: 500,
+            fontSize: '0.875rem',
+          }}>
+            {moveSuccessMsg}
+          </div>
+        )}
         {/* Active Folder Filter Banner */}
         {selectedFolderObj && (
           <div style={{
@@ -473,6 +685,7 @@ function MediaPageInner() {
                     </p>
                     <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                       <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', padding: '4px 8px', fontSize: '0.7rem', borderRadius: 4 }} onClick={(e) => { e.stopPropagation(); handleView(item); }}>View</button>
+                      <button className="btn btn-sm" style={{ background: 'rgba(59, 130, 246, 0.8)', color: 'white', padding: '4px 8px', fontSize: '0.7rem', borderRadius: 4 }} onClick={(e) => { e.stopPropagation(); openMoveModal([item._id]); }} title="Move to another folder">Move</button>
                       <button className="btn btn-sm" style={{ background: 'rgba(255,80,80,0.7)', color: 'white', padding: '4px 8px', fontSize: '0.7rem', borderRadius: 4 }} onClick={(e) => { e.stopPropagation(); handleDelete(item._id); }}>Del</button>
                     </div>
                   </div>
@@ -510,6 +723,164 @@ function MediaPageInner() {
             <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.6)', fontFamily: 'var(--font-ui)', fontSize: '0.8rem', marginTop: 12 }}>
               {previewMedia.attendeeId?.name ? `📁 ${previewMedia.attendeeId.name} · ` : ''}{previewMedia.originalFileName} · {formatFileSize(previewMedia.size)}
             </p>
+          </div>
+        </div>
+      )}
+      {/* Move to Folder Modal */}
+      {showMoveModal && (
+        <div className="modal-overlay" onClick={() => setShowMoveModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <div className="modal-header">
+              <h3 className="modal-title">
+                📁 Move {moveItemIds.length} {moveItemIds.length === 1 ? 'Item' : 'Items'} to Folder
+              </h3>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowMoveModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {/* Target Event and Edition Selection */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Target Event *</label>
+                  <SearchableSelect
+                    value={moveEvent}
+                    onChange={val => handleMoveEventChange(val)}
+                    placeholder="Select event..."
+                    searchPlaceholder="Search event..."
+                    options={events.map(ev => ({
+                      value: ev._id,
+                      label: ev.name,
+                      icon: '📅',
+                    }))}
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Target Edition *</label>
+                  <SearchableSelect
+                    value={moveEdition}
+                    onChange={val => handleMoveEditionChange(val)}
+                    placeholder={moveEditionsList.length === 0 ? 'Select event first' : 'Select edition...'}
+                    searchPlaceholder="Search edition..."
+                    disabled={moveEditionsList.length === 0}
+                    options={moveEditionsList.map(ed => ({
+                      value: ed._id,
+                      label: ed.name,
+                      icon: '📑',
+                    }))}
+                  />
+                </div>
+              </div>
+
+              {/* Destination Mode: Existing vs New Folder */}
+              <div style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: 'var(--radius-md)',
+                padding: 14,
+                marginBottom: 16,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <label className="form-label" style={{ margin: 0, fontWeight: 600, color: '#1e293b' }}>
+                    Destination Folder *
+                  </label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${moveMode === 'existing' ? 'btn-accent' : 'btn-outline'}`}
+                      style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                      onClick={() => setMoveMode('existing')}
+                    >
+                      📁 Existing ({moveFoldersList.length})
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${moveMode === 'new' ? 'btn-accent' : 'btn-outline'}`}
+                      style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                      onClick={() => setMoveMode('new')}
+                    >
+                      ➕ Create New
+                    </button>
+                  </div>
+                </div>
+
+                {moveMode === 'existing' ? (
+                  loadingMoveFolders ? (
+                    <p style={{ fontSize: '0.82rem', color: '#64748b', margin: 0 }}>Loading folders...</p>
+                  ) : moveFoldersList.length === 0 ? (
+                    <div style={{ padding: 12, background: '#fffbeb', border: '1px dashed #fcd34d', borderRadius: 6, textAlign: 'center' }}>
+                      <p style={{ margin: '0 0 6px', fontSize: '0.82rem', color: '#92400e', fontWeight: 500 }}>
+                        No folders found for this edition.
+                      </p>
+                      <button
+                        type="button"
+                        className="btn btn-accent btn-sm"
+                        style={{ fontSize: '0.75rem' }}
+                        onClick={() => setMoveMode('new')}
+                      >
+                        ➕ Create First Folder
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <SearchableSelect
+                        value={moveFolderId}
+                        onChange={val => setMoveFolderId(val)}
+                        placeholder="-- Choose target folder --"
+                        searchPlaceholder="Type folder name or email..."
+                        options={moveFoldersList.map(folder => ({
+                          value: folder._id,
+                          label: folder.name,
+                          badge: `${folder.mediaCount ?? 0} files`,
+                          icon: '📁',
+                        }))}
+                      />
+                    </div>
+                  )
+                ) : (
+                  <div>
+                    <div className="form-group" style={{ marginBottom: 10 }}>
+                      <label className="form-label" style={{ fontSize: '0.78rem' }}>Folder Name *</label>
+                      <input
+                        className="form-input"
+                        placeholder="e.g. Stage Highlights, Dr. Anas, VIP Dinner..."
+                        value={moveNewName}
+                        onChange={e => setMoveNewName(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 10 }}>
+                      <label className="form-label" style={{ fontSize: '0.78rem' }}>Contact Email (Optional)</label>
+                      <input
+                        className="form-input"
+                        type="email"
+                        placeholder="attendee@example.com"
+                        value={moveNewEmail}
+                        onChange={e => setMoveNewEmail(e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: '0.78rem' }}>Download PIN (Optional)</label>
+                      <input
+                        className="form-input"
+                        placeholder="e.g. 1234 (leaves public if blank)"
+                        value={moveNewPin}
+                        onChange={e => setMoveNewPin(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {moveError && <p className="error-text" style={{ margin: 0 }}>{moveError}</p>}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-outline" onClick={() => setShowMoveModal(false)} disabled={moving}>
+                Cancel
+              </button>
+              <button className="btn btn-accent" onClick={handleExecuteMove} disabled={moving}>
+                {moving ? 'Moving...' : `Move ${moveItemIds.length} ${moveItemIds.length === 1 ? 'Item' : 'Items'}`}
+              </button>
+            </div>
           </div>
         </div>
       )}

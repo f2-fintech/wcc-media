@@ -118,14 +118,19 @@ export async function GET(
       })
     );
 
-    // Presigned banner URLs
+    // Presigned banner URLs: prioritize current edition banner, fallback to event banner
     let desktopBannerUrl = null;
     let mobileBannerUrl = null;
-    if (event.desktopBanner?.s3Key) {
-      desktopBannerUrl = await getPresignedDownloadUrl(event.desktopBanner.s3Key, 3600);
+    const desktopS3Key =
+      (currentEdition as any)?.desktopBanner?.s3Key || event.desktopBanner?.s3Key;
+    const mobileS3Key =
+      (currentEdition as any)?.mobileBanner?.s3Key || event.mobileBanner?.s3Key;
+
+    if (desktopS3Key) {
+      desktopBannerUrl = await getPresignedDownloadUrl(desktopS3Key, 3600);
     }
-    if (event.mobileBanner?.s3Key) {
-      mobileBannerUrl = await getPresignedDownloadUrl(event.mobileBanner.s3Key, 3600);
+    if (mobileS3Key) {
+      mobileBannerUrl = await getPresignedDownloadUrl(mobileS3Key, 3600);
     }
 
     return NextResponse.json({

@@ -65,8 +65,12 @@ export async function deleteS3Object(key: string): Promise<void> {
 export function buildBannerKey(
   eventId: string,
   variant: 'desktop' | 'mobile',
-  fileName: string
+  fileName: string,
+  editionId?: string
 ): string {
+  if (editionId) {
+    return `event-pics/${eventId}/editions/${editionId}/banners/${variant}/${fileName}`;
+  }
   return `event-pics/${eventId}/banners/${variant}/${fileName}`;
 }
 

@@ -1,5 +1,10 @@
 // lib/mongodb/connect.ts
 import mongoose from 'mongoose';
+import dns from 'node:dns';
+
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch {}
 
 const MONGODB_URI = process.env.MONGODB_URI!;
 
@@ -33,6 +38,7 @@ async function connectDB(): Promise<typeof mongoose> {
       connectTimeoutMS: 10000,
       socketTimeoutMS: 30000,
       maxPoolSize: 10,
+      family: 4, // Force IPv4 to prevent Windows/Node IPv6 DNS timeouts
     };
 
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((instance) => {

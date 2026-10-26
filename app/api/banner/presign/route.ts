@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { eventId, variant, fileName, fileType, fileSize } = body;
+    const { eventId, editionId, variant, fileName, fileType, fileSize } = body;
 
     if (!eventId || !variant || !fileName || !fileType) {
       return NextResponse.json(
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     const ext = fileName.split('.').pop() || 'jpg';
     const uniqueName = `${uuidv4()}.${ext}`;
-    const s3Key = buildBannerKey(eventId, variant as 'desktop' | 'mobile', uniqueName);
+    const s3Key = buildBannerKey(eventId, variant as 'desktop' | 'mobile', uniqueName, editionId);
     const presignedUrl = await getPresignedUploadUrl(s3Key, fileType, 900);
     const s3Url = buildS3Url(s3Key);
 
