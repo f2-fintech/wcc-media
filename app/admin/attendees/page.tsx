@@ -6,12 +6,14 @@ import SearchableSelect from '@/components/admin/SearchableSelect';
 import { useDebounce } from '@/lib/useDebounce';
 
 interface Event { _id: string; name: string; }
+interface Edition { _id: string; name: string; }
 interface Attendee {
   _id: string;
   name: string;
   email: string;
   downloadPin?: string;
   eventId: string;
+  editionId?: { _id: string; name: string; slug: string } | string;
   mediaCount: number;
   createdAt: string;
 }
@@ -19,8 +21,11 @@ interface Pagination { page: number; limit: number; total: number; pages: number
 
 export default function AttendeesPage() {
   const [events, setEvents] = useState<Event[]>([]);
+  const [editions, setEditions] = useState<Edition[]>([]);
+  const [createEditions, setCreateEditions] = useState<Edition[]>([]);
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [filterEvent, setFilterEvent] = useState('');
+  const [filterEdition, setFilterEdition] = useState('');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
 
@@ -30,12 +35,12 @@ export default function AttendeesPage() {
 
   // Edit folder modal state
   const [editingAttendee, setEditingAttendee] = useState<Attendee | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', email: '', downloadPin: '' });
+  const [editForm, setEditForm] = useState({ name: '', email: '', downloadPin: '', editionId: '' });
   const [saving, setSaving] = useState(false);
 
   // Create folder modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createForm, setCreateForm] = useState({ eventId: '', name: '', email: '', downloadPin: '' });
+  const [createForm, setCreateForm] = useState({ eventId: '', editionId: '', name: '', email: '', downloadPin: '' });
   const [creating, setCreating] = useState(false);
 
   const [error, setError] = useState('');
@@ -54,11 +59,27 @@ export default function AttendeesPage() {
       });
   }, []);
 
+  // Fetch editions when filterEvent changes
+  useEffect(() => {
+    if (!filterEvent) {
+      setEditions([]);
+      setFilterEdition('');
+      return;
+    }
+    fetch(`/api/editions?eventId=${filterEvent}&all=true`)
+      .then(r => r.json())
+      .then(d => {
+        setEditions(d.editions || []);
+      });
+    setFilterEdition('');
+  }, [filterEvent]);
+
   // Paginated load with debounced search
   const loadAttendees = useCallback(async (page = 1, currentLimit = pageSize) => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), limit: String(currentLimit) });
     if (filterEvent) params.set('eventId', filterEvent);
+    if (filterEdition) params.set('editionId', filterEdition);
     if (debouncedSearch) params.set('search', debouncedSearch);
 
     try {
@@ -67,7 +88,7 @@ export default function AttendeesPage() {
       setAttendees(data.attendees || []);
       setPagination(data.pagination || { page: 1, limit: currentLimit, total: 0, pages: 0 });
     } finally { setLoading(false); }
-  }, [filterEvent, debouncedSearch, pageSize]);
+  }, [filterEvent, filterEdition, debouncedSearch, pageSize]);
 
   useEffect(() => {
     loadAttendees(1, pageSize);
@@ -75,24 +96,60 @@ export default function AttendeesPage() {
 
   function openEdit(a: Attendee) {
     setEditingAttendee(a);
-    setEditForm({ name: a.name, email: a.email || '', downloadPin: a.downloadPin || '' });
+    const edId = typeof a.editionId === 'object' ? a.editionId?._id : (a.editionId || '');
+    setEditForm({ name: a.name, email: a.email || '', downloadPin: a.downloadPin || '', editionId: edId });
     setError('');
   }
 
   function openCreate() {
     setShowCreateModal(true);
+    const defaultEv = filterEvent || (events.length > 0 ? events[0]._id : '');
     setCreateForm({
-      eventId: filterEvent || (events.length > 0 ? events[0]._id : ''),
+      eventId: defaultEv,
+      editionId: filterEdition || '',
       name: '',
       email: '',
       downloadPin: '',
     });
+    if (defaultEv) {
+      fetch(`/api/editions?eventId=${defaultEv}&all=true`)
+        .then(r => r.json())
+        .then(d => {
+          const eds = (d.editions || []).filter((e: any) => e.status === 'active');
+          setCreateEditions(eds);
+          if (filterEdition && eds.some((e: any) => e._id === filterEdition)) {
+            setCreateForm(f => ({ ...f, editionId: filterEdition }));
+          } else if (eds.length > 0) {
+            setCreateForm(f => ({ ...f, editionId: eds[0]._id }));
+          }
+        });
+    } else {
+      setCreateEditions([]);
+    }
     setError('');
   }
+
+  const handleCreateEventChange = (evId: string) => {
+    setCreateForm(f => ({ ...f, eventId: evId, editionId: '' }));
+    if (evId) {
+      fetch(`/api/editions?eventId=${evId}&all=true`)
+        .then(r => r.json())
+        .then(d => {
+          const eds = (d.editions || []).filter((e: any) => e.status === 'active');
+          setCreateEditions(eds);
+          if (eds.length > 0) {
+            setCreateForm(f => ({ ...f, editionId: eds[0]._id }));
+          }
+        });
+    } else {
+      setCreateEditions([]);
+    }
+  };
 
   async function handleCreate() {
     setError('');
     if (!createForm.eventId) { setError('Please select an event.'); return; }
+    if (!createForm.editionId) { setError('Please select an edition for this folder.'); return; }
     if (!createForm.name.trim()) { setError('Folder name is required.'); return; }
 
     setCreating(true);
@@ -180,10 +237,13 @@ export default function AttendeesPage() {
         <div className="card" style={{ marginBottom: 24 }}>
           <div className="card-body" style={{ paddingTop: 16, paddingBottom: 16 }}>
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-              <div style={{ minWidth: 220, flex: '1 1 220px' }}>
+              <div style={{ minWidth: 200, flex: '1 1 200px' }}>
                 <SearchableSelect
                   value={filterEvent}
-                  onChange={val => setFilterEvent(val)}
+                  onChange={val => {
+                    setFilterEvent(val);
+                    setFilterEdition('');
+                  }}
                   placeholder="All Events"
                   allOptionLabel="All Events"
                   allOptionValue=""
@@ -192,6 +252,23 @@ export default function AttendeesPage() {
                     value: ev._id,
                     label: ev.name,
                     icon: '📅',
+                  }))}
+                />
+              </div>
+
+              <div style={{ minWidth: 180, flex: '1 1 180px' }}>
+                <SearchableSelect
+                  value={filterEdition}
+                  onChange={val => setFilterEdition(val)}
+                  placeholder={!filterEvent ? 'Select event first' : 'All Editions'}
+                  allOptionLabel="All Editions"
+                  allOptionValue=""
+                  disabled={!filterEvent}
+                  searchPlaceholder="Search editions..."
+                  options={editions.map(ed => ({
+                    value: ed._id,
+                    label: ed.name,
+                    icon: '📑',
                   }))}
                 />
               </div>
@@ -247,6 +324,7 @@ export default function AttendeesPage() {
               <thead>
                 <tr>
                   <th>Folder Name</th>
+                  <th>Edition</th>
                   <th>Contact Email</th>
                   <th>Media Count</th>
                   <th>Created Date</th>
@@ -274,6 +352,24 @@ export default function AttendeesPage() {
                           )}
                         </div>
                       </div>
+                    </td>
+                    <td style={{ fontSize: '0.82rem' }}>
+                      {typeof a.editionId === 'object' && a.editionId?.name ? (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          background: '#eff6ff',
+                          color: '#1d4ed8',
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          fontWeight: 500,
+                        }}>
+                          📑 {a.editionId.name}
+                        </span>
+                      ) : (
+                        <span style={{ color: '#94a3b8' }}>—</span>
+                      )}
                     </td>
                     <td style={{ color: 'var(--color-dark-grey)', fontSize: '0.85rem' }}>
                       {a.email || <span style={{ color: '#94a3b8' }}>—</span>}
@@ -303,7 +399,7 @@ export default function AttendeesPage() {
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                         <Link
-                          href={`/admin/media/upload?eventId=${a.eventId}&folderId=${a._id}`}
+                          href={`/admin/media/upload?eventId=${a.eventId}&editionId=${typeof a.editionId === 'object' ? a.editionId?._id : (a.editionId || '')}&folderId=${a._id}`}
                           className="btn btn-accent btn-sm"
                           style={{
                             padding: '4px 10px',
@@ -436,13 +532,29 @@ export default function AttendeesPage() {
                 <label className="form-label">Event *</label>
                 <SearchableSelect
                   value={createForm.eventId}
-                  onChange={val => setCreateForm(f => ({ ...f, eventId: val }))}
+                  onChange={val => handleCreateEventChange(val)}
                   placeholder="Select an Event..."
                   searchPlaceholder="Search event..."
                   options={events.map(ev => ({
                     value: ev._id,
                     label: ev.name,
                     icon: '📅',
+                  }))}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Edition *</label>
+                <SearchableSelect
+                  value={createForm.editionId}
+                  onChange={val => setCreateForm(f => ({ ...f, editionId: val }))}
+                  placeholder={createEditions.length === 0 ? 'Select event first or no editions' : 'Select Edition...'}
+                  searchPlaceholder="Search editions..."
+                  disabled={createEditions.length === 0}
+                  options={createEditions.map(ed => ({
+                    value: ed._id,
+                    label: ed.name,
+                    icon: '📑',
                   }))}
                 />
               </div>

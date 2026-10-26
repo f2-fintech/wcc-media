@@ -93,7 +93,9 @@ export default function GalleryPage() {
           setCurrentEdition(data.currentEdition);
           setSelectedEditionId(data.currentEdition._id);
         }
-        setAttendees(data.attendees || []);
+        const attList: Attendee[] = data.attendees || [];
+        setAttendees(attList);
+        setSelectedAttendee(prev => (attList.some(a => a._id === prev) ? prev : ''));
         setTotalPhotos(data.totalPhotos);
         setTotalVideos(data.totalVideos);
         setMedia(data.media || []);

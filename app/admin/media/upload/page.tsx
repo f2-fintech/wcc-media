@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useRef, useState, useMemo } from 'react';
+import { Suspense, useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { formatFileSize } from '@/lib/utils';
@@ -75,11 +75,15 @@ function MediaUploadInner() {
       });
   }, [urlEventId]);
 
-  // Fetch editions and existing folders when event changes (all=true for dropdown autocomplete)
-  const loadFoldersForEvent = (eventId: string) => {
-    if (!eventId) return;
+  // Fetch existing folders when event or edition changes (all=true for dropdown autocomplete)
+  const loadFolders = useCallback((eventId: string, editionId: string) => {
+    if (!eventId || !editionId) {
+      setExistingFolders([]);
+      setSelectedFolderId('');
+      return;
+    }
     setLoadingFolders(true);
-    fetch(`/api/attendees?eventId=${eventId}&all=true`)
+    fetch(`/api/attendees?eventId=${eventId}&editionId=${editionId}&all=true`)
       .then(r => r.json())
       .then(data => {
         const folders: ExistingFolder[] = data.attendees || [];
@@ -88,18 +92,25 @@ function MediaUploadInner() {
         if (urlFolderId && folders.some(f => f._id === urlFolderId)) {
           setSelectedFolderId(urlFolderId);
           setFolderMode('existing');
-        } else if (folders.length > 0 && !selectedFolderId) {
-          setSelectedFolderId(folders[0]._id);
-        } else if (folders.length === 0) {
+        } else if (folders.length > 0) {
+          setSelectedFolderId(prev => (folders.some(f => f._id === prev) ? prev : folders[0]._id));
+          setFolderMode('existing');
+        } else {
+          setSelectedFolderId('');
           setFolderMode('new');
         }
       })
       .catch(() => {})
       .finally(() => setLoadingFolders(false));
-  };
+  }, [urlFolderId]);
 
+  // Load editions when selectedEvent changes
   useEffect(() => {
-    if (!selectedEvent) return;
+    if (!selectedEvent) {
+      setEditions([]);
+      setSelectedEdition('');
+      return;
+    }
 
     fetch(`/api/editions?eventId=${selectedEvent}&all=true`)
       .then(r => r.json())
@@ -114,9 +125,17 @@ function MediaUploadInner() {
           setSelectedEdition('');
         }
       });
+  }, [selectedEvent, urlEditionId]);
 
-    loadFoldersForEvent(selectedEvent);
-  }, [selectedEvent, urlEditionId, urlFolderId]);
+  // Load folders when selectedEvent or selectedEdition changes
+  useEffect(() => {
+    if (selectedEvent && selectedEdition) {
+      loadFolders(selectedEvent, selectedEdition);
+    } else {
+      setExistingFolders([]);
+      setSelectedFolderId('');
+    }
+  }, [selectedEvent, selectedEdition, loadFolders]);
 
   const activeSelectedFolder = useMemo(() => {
     return existingFolders.find(f => f._id === selectedFolderId) || null;
@@ -173,6 +192,7 @@ function MediaUploadInner() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             eventId: selectedEvent,
+            editionId: selectedEdition,
             name: newFolderName.trim(),
             email: newFolderEmail.trim(),
             downloadPin: newFolderPin.trim(),
@@ -274,7 +294,7 @@ function MediaUploadInner() {
       );
 
       setSuccessCount(prev => prev + successCnt);
-      loadFoldersForEvent(selectedEvent);
+      loadFolders(selectedEvent, selectedEdition);
 
       if (folderMode === 'new' && targetAttendeeId) {
         setSelectedFolderId(targetAttendeeId);
@@ -356,7 +376,10 @@ function MediaUploadInner() {
                   <SearchableSelect
                     id="upload-edition"
                     value={selectedEdition}
-                    onChange={val => setSelectedEdition(val)}
+                    onChange={val => {
+                      setSelectedEdition(val);
+                      setSelectedFolderId('');
+                    }}
                     placeholder={editions.length === 0 ? 'No editions available' : 'Select an Edition...'}
                     searchPlaceholder="Search editions..."
                     disabled={editions.length === 0}
@@ -409,7 +432,7 @@ function MediaUploadInner() {
                     ) : existingFolders.length === 0 ? (
                       <div style={{ padding: 16, background: '#fffbeb', border: '1px dashed #fcd34d', borderRadius: 8, textAlign: 'center' }}>
                         <p style={{ margin: '0 0 8px', fontSize: '0.85rem', color: '#92400e', fontWeight: 500 }}>
-                          No folders found for this event yet.
+                          No folders found for this edition yet.
                         </p>
                         <button
                           type="button"

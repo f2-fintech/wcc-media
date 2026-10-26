@@ -80,10 +80,12 @@ export async function GET(
       countQuery.editionId = currentEdition._id;
     }
 
-    // 4. Fetch attendees for this event
-    const attendees = await Attendee.find({
-      eventId: event._id,
-    })
+    // 4. Fetch attendees for this edition
+    const attendeeQuery: Record<string, unknown> = { eventId: event._id };
+    if (currentEdition) {
+      attendeeQuery.editionId = currentEdition._id;
+    }
+    const attendees = await Attendee.find(attendeeQuery)
       .sort({ name: 1 })
       .lean();
 

@@ -2,6 +2,7 @@ import mongoose, { Document, Schema, Model, Types } from 'mongoose';
 
 export interface IAttendee extends Document {
   eventId: Types.ObjectId;
+  editionId?: Types.ObjectId;
   name: string;
   email?: string;
   normalizedEmail?: string;
@@ -16,6 +17,10 @@ const AttendeeSchema = new Schema<IAttendee>(
       type: Schema.Types.ObjectId,
       ref: 'Event',
       required: true,
+    },
+    editionId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Edition',
     },
     name: {
       type: String,
@@ -39,6 +44,8 @@ const AttendeeSchema = new Schema<IAttendee>(
   { timestamps: true }
 );
 
+AttendeeSchema.index({ eventId: 1, editionId: 1 });
+AttendeeSchema.index({ editionId: 1 });
 AttendeeSchema.index({ eventId: 1, normalizedEmail: 1 });
 AttendeeSchema.index({ normalizedEmail: 1 });
 

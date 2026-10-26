@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb/connect';
 import Attendee from '@/models/Attendee';
+import Edition from '@/models/Edition';
 import Media from '@/models/Media';
 import { requireAdminAuth } from '@/lib/auth/auth';
 
-// GET /api/attendees?eventId=xxx&page=1&limit=20&search=xxx&all=true
+// GET /api/attendees?eventId=xxx&editionId=xxx&page=1&limit=20&search=xxx&all=true
 export async function GET(request: NextRequest) {
   const auth = await requireAdminAuth(request);
   if (auth instanceof NextResponse) return auth;
 
   const { searchParams } = new URL(request.url);
   const eventId = searchParams.get('eventId');
+  const editionId = searchParams.get('editionId');
   const search = searchParams.get('search') || '';
   const all = searchParams.get('all') === 'true';
   const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
@@ -21,6 +23,7 @@ export async function GET(request: NextRequest) {
   try {
     const query: Record<string, unknown> = {};
     if (eventId) query.eventId = eventId;
+    if (editionId) query.editionId = editionId;
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -30,6 +33,7 @@ export async function GET(request: NextRequest) {
 
     const [attendees, total] = await Promise.all([
       Attendee.find(query)
+        .populate('editionId', 'name slug')
         .sort({ name: 1 })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -40,7 +44,13 @@ export async function GET(request: NextRequest) {
     // Add media counts
     const attendeesWithCounts = await Promise.all(
       attendees.map(async (attendee) => {
-        const mediaCount = await Media.countDocuments({ attendeeId: attendee._id });
+        const countQuery: Record<string, unknown> = { attendeeId: attendee._id };
+        if (editionId) {
+          countQuery.editionId = editionId;
+        } else if (attendee.editionId) {
+          countQuery.editionId = (attendee.editionId as any)._id || attendee.editionId;
+        }
+        const mediaCount = await Media.countDocuments(countQuery);
         return { ...attendee, mediaCount };
       })
     );
@@ -64,7 +74,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { eventId, name, email, downloadPin, attendeeId } = body;
+    const { eventId, editionId, name, email, downloadPin, attendeeId } = body;
 
     if (attendeeId) {
       const existing = await Attendee.findById(attendeeId);
@@ -80,26 +90,45 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Resolve editionId if not explicitly provided
+    let targetEditionId = editionId;
+    if (!targetEditionId) {
+      const firstEdition = await Edition.findOne({ eventId, status: 'active' }).sort({ order: 1, createdAt: 1 });
+      if (firstEdition) {
+        targetEditionId = firstEdition._id;
+      }
+    }
+
     const trimmedName = name.trim();
     const normalizedEmail = email ? email.toLowerCase().trim() : undefined;
     const escapedName = trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    // Case-insensitive lookup under the same event
-    let attendee = await Attendee.findOne({
+    // Case-insensitive lookup under the same event and edition
+    const lookupQuery: Record<string, unknown> = {
       eventId,
       name: { $regex: new RegExp(`^${escapedName}$`, 'i') },
-    });
+    };
+    if (targetEditionId) {
+      lookupQuery.editionId = targetEditionId;
+    }
+
+    let attendee = await Attendee.findOne(lookupQuery);
 
     if (!attendee && normalizedEmail) {
-      attendee = await Attendee.findOne({
+      const emailLookup: Record<string, unknown> = {
         eventId,
         normalizedEmail,
-      });
+      };
+      if (targetEditionId) {
+        emailLookup.editionId = targetEditionId;
+      }
+      attendee = await Attendee.findOne(emailLookup);
     }
 
     if (!attendee) {
       attendee = await Attendee.create({
         eventId,
+        ...(targetEditionId && { editionId: targetEditionId }),
         name: trimmedName,
         ...(email && { email: email.trim() }),
         ...(normalizedEmail && { normalizedEmail }),
@@ -107,8 +136,12 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json({ attendee }, { status: 201 });
     } else {
-      // If found existing folder, update email / downloadPin if provided
+      // If found existing folder, update email / downloadPin / editionId if provided
       let modified = false;
+      if (targetEditionId && (!attendee.editionId || attendee.editionId.toString() !== targetEditionId.toString())) {
+        attendee.editionId = targetEditionId;
+        modified = true;
+      }
       if (email && (!attendee.email || attendee.email !== email.trim())) {
         attendee.email = email.trim();
         attendee.normalizedEmail = email.toLowerCase().trim();

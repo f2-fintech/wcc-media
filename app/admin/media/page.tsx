@@ -54,13 +54,11 @@ function MediaPageInner() {
       });
   }, [urlEventId]);
 
-  // Load all editions and folders for selected event
+  // Load all editions for selected event
   useEffect(() => {
     if (!filterEvent) {
       setEditions([]);
       setFilterEdition('');
-      setAttendees([]);
-      setFilterAttendee('');
       return;
     }
 
@@ -69,18 +67,30 @@ function MediaPageInner() {
       .then(r => r.json())
       .then(d => setEditions(d.editions || []));
     setFilterEdition('');
+  }, [filterEvent]);
 
-    // Load folders (all=true for dropdown autocomplete)
-    fetch(`/api/attendees?eventId=${filterEvent}&all=true`)
+  // Load folders for selected event and edition
+  useEffect(() => {
+    if (!filterEvent) {
+      setAttendees([]);
+      setFilterAttendee('');
+      return;
+    }
+
+    // Load folders (all=true for dropdown autocomplete, filtered by editionId if selected)
+    const editionParam = filterEdition ? `&editionId=${filterEdition}` : '';
+    fetch(`/api/attendees?eventId=${filterEvent}${editionParam}&all=true`)
       .then(r => r.json())
       .then(d => {
         const attList: AttendeeFolder[] = d.attendees || [];
         setAttendees(attList);
         if (urlAttendeeId && attList.some(a => a._id === urlAttendeeId)) {
           setFilterAttendee(urlAttendeeId);
+        } else if (filterAttendee && !attList.some(a => a._id === filterAttendee)) {
+          setFilterAttendee('');
         }
       });
-  }, [filterEvent, urlAttendeeId]);
+  }, [filterEvent, filterEdition, urlAttendeeId]);
 
   // Paginated media loading (rate limited per page to 24 items)
   const loadMedia = useCallback(async (page = 1) => {
@@ -267,7 +277,10 @@ function MediaPageInner() {
                 <label className="form-label">Edition</label>
                 <SearchableSelect
                   value={filterEdition}
-                  onChange={val => setFilterEdition(val)}
+                  onChange={val => {
+                    setFilterEdition(val);
+                    setFilterAttendee('');
+                  }}
                   placeholder={!filterEvent ? 'Select event first' : 'All Editions'}
                   allOptionLabel="All Editions"
                   allOptionValue=""

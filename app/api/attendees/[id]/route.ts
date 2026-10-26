@@ -16,10 +16,11 @@ export async function PATCH(
 
   try {
     const body = await request.json();
-    const { name, email, downloadPin } = body;
+    const { name, email, downloadPin, editionId } = body;
 
-    const updateData: Record<string, string> = {};
+    const updateData: Record<string, any> = {};
     if (name) updateData.name = name.trim();
+    if (editionId) updateData.editionId = editionId;
     if (email !== undefined) {
       if (email.trim() === '') {
         updateData.email = '';
