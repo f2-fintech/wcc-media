@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   description: 'Official digital showcase of corporate milestones, celebrations, and events across 1F2.',
 };
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 60;
 
 export default async function HomePage() {
   let eventsList: EventItemData[] = [];

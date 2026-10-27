@@ -88,6 +88,10 @@ const MediaSchema = new Schema<IMedia>(
 );
 
 MediaSchema.index({ eventId: 1, editionId: 1 });
+MediaSchema.index({ eventId: 1, editionId: 1, createdAt: -1 });
+MediaSchema.index({ eventId: 1, editionId: 1, attendeeId: 1, createdAt: -1 });
+MediaSchema.index({ eventId: 1, editionId: 1, type: 1 });
+MediaSchema.index({ editionId: 1 });
 MediaSchema.index({ attendeeId: 1 });
 MediaSchema.index({ eventId: 1, type: 1 });
 MediaSchema.index({ createdAt: -1 });

@@ -33,20 +33,20 @@ export default function MyPhotosPage() {
   const eventSlug = params.eventSlug as string;
 
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<AttendeeResult | null>(null);
   const [filter, setFilter] = useState<'all' | 'photo' | 'video'>('all');
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   async function handleLookup(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setResult(null);
 
-    if (!name.trim() || !email.trim()) {
-      setError('Please enter both your name and email address.');
+    if (!name.trim()) {
+      setError('Please enter your name.');
       return;
     }
 
@@ -55,7 +55,7 @@ export default function MyPhotosPage() {
       const res = await fetch('/api/attendees/lookup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), eventSlug }),
+        body: JSON.stringify({ name: name.trim(), eventSlug }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Lookup failed.'); return; }
@@ -64,15 +64,25 @@ export default function MyPhotosPage() {
     finally { setLoading(false); }
   }
 
-  async function handleDownload(item: MediaItem) {
+  function handleDownload(item: MediaItem) {
+    if (!item || !item._id) return;
+    setDownloadingId(item._id);
+
+    // Direct download via dedicated same-origin streaming route with Content-Disposition: attachment
+    // Bypasses browser CORS and forces immediate direct download into Downloads folder without opening in new tab
+    const downloadUrl = `/api/public/gallery/download?mediaId=${encodeURIComponent(item._id)}`;
+
     const a = document.createElement('a');
-    a.href = item.viewUrl || item.thumbnailUrl;
-    a.download = item.originalFileName;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
+    a.style.display = 'none';
+    a.href = downloadUrl;
+    a.setAttribute('download', item.originalFileName || 'image.jpeg');
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
+
+    setTimeout(() => {
+      document.body.removeChild(a);
+      setDownloadingId(null);
+    }, 1500);
   }
 
   const filteredMedia = result?.media?.filter(m => filter === 'all' || m.type === filter) || [];
@@ -109,31 +119,19 @@ export default function MyPhotosPage() {
           </div>
 
           <h1 className="my-photos-heading">My Photos</h1>
-          <p className="my-photos-sub">To continue, please enter your details.</p>
+          <p className="my-photos-sub">To view your photos, enter your name below.</p>
 
           <form onSubmit={handleLookup}>
-            <div className="form-group" style={{ marginBottom: 24 }}>
+            <div className="form-group" style={{ marginBottom: 32 }}>
               <label className="form-label" htmlFor="my-photos-name" style={{ fontSize: '0.75rem', letterSpacing: '0.08em' }}>Name</label>
               <input
                 id="my-photos-name"
                 className="my-photos-form-input"
-                placeholder="Your full name"
+                placeholder="Your name"
                 value={name}
                 onChange={e => setName(e.target.value)}
                 required
-              />
-            </div>
-
-            <div className="form-group" style={{ marginBottom: 32 }}>
-              <label className="form-label" htmlFor="my-photos-email" style={{ color: 'var(--color-accent)', fontSize: '0.75rem', letterSpacing: '0.08em' }}>Email</label>
-              <input
-                id="my-photos-email"
-                className="my-photos-form-input"
-                type="email"
-                placeholder="Your email address"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required
+                autoFocus
               />
             </div>
 
@@ -169,11 +167,11 @@ export default function MyPhotosPage() {
             <div className="empty-state" style={{ maxWidth: 480, margin: '60px auto' }}>
               <div className="empty-state-icon">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" />
                 </svg>
               </div>
               <h3>No photos or videos found</h3>
-              <p>No photos or videos were found for the details provided.</p>
+              <p>No photos or videos were found for &ldquo;{name}&rdquo;. Please check the spelling or try searching a part of your name.</p>
               <button className="btn btn-outline" style={{ marginTop: 16 }} onClick={() => setResult(null)}>Try Again</button>
             </div>
           ) : (
@@ -244,7 +242,7 @@ export default function MyPhotosPage() {
                         />
                         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
                           <div style={{ width: 48, height: 48, background: 'rgba(255,255,255,0.2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3" /></svg>
                           </div>
                         </div>
                         <span className="badge badge-video" style={{ position: 'absolute', top: 8, left: 8, zIndex: 2, fontSize: '0.65rem' }}>Video</span>
@@ -265,10 +263,11 @@ export default function MyPhotosPage() {
                     >
                       <button
                         className="btn"
-                        style={{ background: 'white', color: 'var(--color-charcoal)', padding: '6px 14px', fontSize: '0.78rem', borderRadius: 4 }}
+                        style={{ background: 'white', color: 'var(--color-charcoal)', padding: '6px 14px', fontSize: '0.78rem', borderRadius: 4, cursor: downloadingId === item._id ? 'wait' : 'pointer' }}
                         onClick={(e) => { e.stopPropagation(); handleDownload(item); }}
+                        disabled={downloadingId === item._id}
                       >
-                        ↓ Download
+                        {downloadingId === item._id ? 'Downloading...' : '↓ Download'}
                       </button>
                     </div>
                   </div>
@@ -305,10 +304,22 @@ export default function MyPhotosPage() {
             )}
             <button
               className="btn"
-              style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', padding: '8px 20px', fontSize: '0.8rem' }}
+              style={{
+                background: 'rgba(255,255,255,0.95)',
+                color: 'var(--color-charcoal)',
+                border: 'none',
+                borderRadius: 24,
+                padding: '10px 24px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                fontFamily: 'var(--font-ui)',
+                cursor: downloadingId === filteredMedia[lightboxIdx]._id ? 'wait' : 'pointer',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+              }}
               onClick={() => handleDownload(filteredMedia[lightboxIdx])}
+              disabled={downloadingId === filteredMedia[lightboxIdx]._id}
             >
-              ↓ Download
+              {downloadingId === filteredMedia[lightboxIdx]._id ? 'Downloading...' : '↓ Download Image'}
             </button>
           </div>
 

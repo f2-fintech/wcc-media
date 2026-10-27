@@ -45,7 +45,9 @@ const AttendeeSchema = new Schema<IAttendee>(
 );
 
 AttendeeSchema.index({ eventId: 1, editionId: 1 });
+AttendeeSchema.index({ eventId: 1, editionId: 1, name: 1 });
 AttendeeSchema.index({ editionId: 1 });
+AttendeeSchema.index({ eventId: 1, name: 1 });
 AttendeeSchema.index({ eventId: 1, normalizedEmail: 1 });
 AttendeeSchema.index({ normalizedEmail: 1 });
 

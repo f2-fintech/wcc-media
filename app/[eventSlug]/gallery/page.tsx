@@ -62,6 +62,7 @@ export default function GalleryPage() {
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   // Close edition dropdown when clicking outside
   useEffect(() => {
@@ -74,16 +75,26 @@ export default function GalleryPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   const load = useCallback(async (pageNum: number, attendeeId: string, editionId?: string, append = false) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     if (!append) setLoading(true);
     else setLoadingMore(true);
+
     try {
       const queryParams = new URLSearchParams({ page: String(pageNum), limit: '24' });
       if (attendeeId) queryParams.set('attendeeId', attendeeId);
-      const activeEdition = editionId !== undefined ? editionId : selectedEditionId;
-      if (activeEdition) queryParams.set('editionId', activeEdition);
+      if (editionId) queryParams.set('editionId', editionId);
 
-      const res = await fetch(`/api/public/gallery/${eventSlug}?${queryParams}`);
+      const res = await fetch(`/api/public/gallery/${eventSlug}?${queryParams}`, {
+        signal: controller.signal,
+      });
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Gallery not found.'); return; }
       if (!append) {
@@ -91,7 +102,7 @@ export default function GalleryPage() {
         setEditions(data.editions || []);
         if (data.currentEdition) {
           setCurrentEdition(data.currentEdition);
-          setSelectedEditionId(data.currentEdition._id);
+          setSelectedEditionId(prev => (prev ? prev : data.currentEdition._id));
         }
         const attList: Attendee[] = data.attendees || [];
         setAttendees(attList);
@@ -103,9 +114,14 @@ export default function GalleryPage() {
         setMedia(prev => [...prev, ...(data.media || [])]);
       }
       setHasMore(pageNum < data.pagination.pages);
-    } catch { setError('Failed to load gallery.'); }
-    finally { setLoading(false); setLoadingMore(false); }
-  }, [eventSlug, selectedEditionId]);
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+      setError('Failed to load gallery.');
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [eventSlug]);
 
   useEffect(() => {
     setPage(1);
@@ -119,8 +135,6 @@ export default function GalleryPage() {
       return;
     }
     startTopProgress();
-    setSelectedEditionId(ed._id);
-    setCurrentEdition(ed);
     setSelectedAttendee('');
     setIsEditionDropdownOpen(false);
     setPage(1);
@@ -131,7 +145,7 @@ export default function GalleryPage() {
     url.searchParams.delete('attendeeId');
     window.history.replaceState({}, '', url.toString());
 
-    load(1, '', ed._id, false);
+    setSelectedEditionId(ed._id);
   }
 
   function handleLoadMore() {
@@ -140,16 +154,25 @@ export default function GalleryPage() {
     load(next, selectedAttendee, selectedEditionId, true);
   }
 
-  async function handleDownload(item: MediaItem) {
-    // For public users, we show a download by fetching the URL directly
+  function handleDownload(item: MediaItem) {
+    if (!item || !item._id) return;
+    setDownloadingId(item._id);
+
+    // Direct download via dedicated same-origin streaming route with Content-Disposition: attachment
+    // Bypasses browser CORS and forces immediate direct download into Downloads folder without opening in new tab
+    const downloadUrl = `/api/public/gallery/download?mediaId=${encodeURIComponent(item._id)}`;
+
     const a = document.createElement('a');
-    a.href = item.thumbnailUrl;
-    a.download = item.originalFileName;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
+    a.style.display = 'none';
+    a.href = downloadUrl;
+    a.setAttribute('download', item.originalFileName || 'image.jpeg');
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
+
+    setTimeout(() => {
+      document.body.removeChild(a);
+      setDownloadingId(null);
+    }, 1500);
   }
 
   async function handleDownloadZipClick() {
@@ -617,9 +640,29 @@ export default function GalleryPage() {
                 <div className="gallery-item-overlay">
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDownload(item); }}
-                    style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', padding: '4px 10px', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'var(--font-ui)' }}
+                    disabled={downloadingId === item._id}
+                    style={{
+                      background: 'rgba(255,255,255,0.2)',
+                      backdropFilter: 'blur(4px)',
+                      border: '1px solid rgba(255,255,255,0.3)',
+                      color: 'white',
+                      padding: '5px 12px',
+                      borderRadius: 4,
+                      fontSize: '0.75rem',
+                      fontWeight: 500,
+                      cursor: downloadingId === item._id ? 'wait' : 'pointer',
+                      fontFamily: 'var(--font-ui)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
                   >
-                    ↓ Download
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    {downloadingId === item._id ? 'Downloading...' : 'Download'}
                   </button>
                 </div>
               </div>
@@ -649,6 +692,44 @@ export default function GalleryPage() {
           }}
           tabIndex={0}
         >
+          {/* Top Download Button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDownload(media[lightboxIdx]);
+            }}
+            disabled={downloadingId === media[lightboxIdx]._id}
+            title="Download image"
+            style={{
+              position: 'absolute',
+              top: 16,
+              right: 70,
+              height: 40,
+              padding: '0 16px',
+              background: 'rgba(255, 255, 255, 0.15)',
+              backdropFilter: 'blur(8px)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              borderRadius: 20,
+              color: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: downloadingId === media[lightboxIdx]._id ? 'wait' : 'pointer',
+              fontFamily: 'var(--font-ui)',
+              fontSize: '0.85rem',
+              fontWeight: 500,
+              zIndex: 2005,
+              transition: 'background var(--transition-fast)',
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            {downloadingId === media[lightboxIdx]._id ? 'Downloading...' : 'Download'}
+          </button>
+
           <button className="lightbox-close" onClick={() => setLightboxIdx(null)}>✕</button>
 
           {lightboxIdx > 0 && (
@@ -660,21 +741,60 @@ export default function GalleryPage() {
             </button>
           )}
 
-          <div onClick={(e) => e.stopPropagation()}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 16,
+              maxWidth: '92vw',
+            }}
+          >
             {media[lightboxIdx].type === 'video' ? (
               <video
                 src={media[lightboxIdx].thumbnailUrl}
                 controls
                 autoPlay
-                style={{ maxWidth: '90vw', maxHeight: '80vh', borderRadius: 8 }}
+                style={{ maxWidth: '90vw', maxHeight: '72vh', borderRadius: 8 }}
               />
             ) : (
               <img
                 src={media[lightboxIdx].thumbnailUrl}
                 alt={media[lightboxIdx].originalFileName}
                 className="lightbox-img"
+                style={{ maxHeight: '72vh' }}
               />
             )}
+
+            {/* Direct Download Button in Image View */}
+            <button
+              onClick={() => handleDownload(media[lightboxIdx])}
+              disabled={downloadingId === media[lightboxIdx]._id}
+              style={{
+                background: 'rgba(255, 255, 255, 0.95)',
+                color: 'var(--color-charcoal)',
+                border: 'none',
+                borderRadius: 24,
+                padding: '10px 24px',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                fontFamily: 'var(--font-ui)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: downloadingId === media[lightboxIdx]._id ? 'wait' : 'pointer',
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.35)',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              {downloadingId === media[lightboxIdx]._id ? 'Downloading...' : 'Download Image'}
+            </button>
           </div>
 
           {lightboxIdx < media.length - 1 && (

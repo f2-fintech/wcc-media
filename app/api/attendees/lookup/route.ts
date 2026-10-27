@@ -11,11 +11,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, email, eventSlug } = body;
+    const { name, eventSlug } = body;
 
-    if (!name || !email || !eventSlug) {
+    if (!name || typeof name !== 'string' || !name.trim() || !eventSlug) {
       return NextResponse.json(
-        { error: 'Name, email and eventSlug are required.' },
+        { error: 'Name and eventSlug are required.' },
         { status: 400 }
       );
     }
@@ -26,21 +26,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Event not found.' }, { status: 404 });
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
+    const trimmedName = name.trim();
+    const escaped = trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const cleanCore = trimmedName.replace(/^dr\.?\s+/i, '').trim();
+    const escapedCore = cleanCore ? cleanCore.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : null;
 
-    // Find attendee - use case-insensitive name match + normalized email
-    const attendee = await Attendee.findOne({
+    // Search matching attendees under this event
+    const searchConditions: any[] = [
+      { name: { $regex: new RegExp(`^${escaped}$`, 'i') } },
+      { name: { $regex: new RegExp(`\\b${escaped}\\b`, 'i') } },
+      { name: { $regex: new RegExp(escaped, 'i') } },
+    ];
+
+    if (escapedCore) {
+      searchConditions.push(
+        { name: { $regex: new RegExp(`^dr\\.?\\s*${escapedCore}$`, 'i') } },
+        { name: { $regex: new RegExp(escapedCore, 'i') } }
+      );
+    }
+
+    const matchingAttendees = await Attendee.find({
       eventId: event._id,
-      normalizedEmail,
-    });
+      $or: searchConditions,
+    }).lean();
 
-    if (!attendee) {
-      // Do not reveal whether the account exists
+    if (!matchingAttendees || matchingAttendees.length === 0) {
       return NextResponse.json({ found: false, media: [] });
     }
 
-    // Fetch their media
-    const mediaItems = await Media.find({ attendeeId: attendee._id })
+    const attendeeIds = matchingAttendees.map((a) => a._id);
+    const primaryName = matchingAttendees[0].name;
+
+    // Fetch their media across all matching folders
+    const mediaItems = await Media.find({ attendeeId: { $in: attendeeIds } })
       .sort({ createdAt: -1 })
       .lean();
 
@@ -67,7 +85,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       found: true,
       attendee: {
-        name: attendee.name,
+        name: primaryName,
         // Do not return email or internal IDs
       },
       media: mediaWithUrls,

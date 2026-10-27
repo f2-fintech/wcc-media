@@ -33,19 +33,44 @@ export async function getPresignedUploadUrl(
   return getSignedUrl(s3Client, command, { expiresIn });
 }
 
+const presignedDownloadCache = new Map<string, { url: string; expiresAt: number }>();
+
 /**
  * Generate a presigned URL to download/view a private file from S3.
- * Default expiry: 1 hour.
+ * Default expiry: 1 hour. Cached in memory for speed.
  */
 export async function getPresignedDownloadUrl(
   key: string,
   expiresIn = 3600
 ): Promise<string> {
+  const now = Date.now();
+  const cached = presignedDownloadCache.get(key);
+  if (cached && cached.expiresAt > now + 300_000) {
+    return cached.url;
+  }
+
   const command = new GetObjectCommand({
     Bucket: BUCKET_NAME,
     Key: key,
   });
-  return getSignedUrl(s3Client, command, { expiresIn });
+  const url = await getSignedUrl(s3Client, command, { expiresIn });
+
+  if (presignedDownloadCache.size > 2000) {
+    presignedDownloadCache.clear();
+  }
+  presignedDownloadCache.set(key, { url, expiresAt: now + expiresIn * 1000 });
+  return url;
+}
+
+/**
+ * Get object stream from S3 for direct server streaming download.
+ */
+export async function getS3ObjectStream(key: string, bucket = BUCKET_NAME) {
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+  });
+  return s3Client.send(command);
 }
 
 /**

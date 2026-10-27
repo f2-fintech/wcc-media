@@ -31,26 +31,31 @@ export async function GET(
       return NextResponse.json({ error: 'Event not found.' }, { status: 404 });
     }
 
-    // 1. Fetch all active editions for this event
-    const rawEditions = await Edition.find({
-      eventId: event._id,
-      status: 'active',
-    })
-      .sort({ order: 1, createdAt: -1 })
-      .lean();
-
-    // Calculate media counts for each edition
-    const editions = await Promise.all(
-      rawEditions.map(async (ed) => {
-        const count = await Media.countDocuments({ editionId: ed._id });
-        return {
-          _id: ed._id.toString(),
-          name: ed.name,
-          slug: ed.slug,
-          mediaCount: count,
-        };
+    // 1. Fetch active editions and edition media counts in a single parallel step
+    const [rawEditions, editionCounts] = await Promise.all([
+      Edition.find({
+        eventId: event._id,
+        status: 'active',
       })
-    );
+        .sort({ order: 1, createdAt: -1 })
+        .lean(),
+      Media.aggregate([
+        { $match: { eventId: event._id } },
+        { $group: { _id: '$editionId', count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const editionCountMap = new Map<string, number>();
+    for (const ec of editionCounts) {
+      if (ec._id) editionCountMap.set(ec._id.toString(), ec.count);
+    }
+
+    const editions = rawEditions.map((ed) => ({
+      _id: ed._id.toString(),
+      name: ed.name,
+      slug: ed.slug,
+      mediaCount: editionCountMap.get(ed._id.toString()) || 0,
+    }));
 
     // 2. Resolve current active edition
     let currentEdition = null;
@@ -80,26 +85,37 @@ export async function GET(
       countQuery.editionId = currentEdition._id;
     }
 
-    // 4. Fetch attendees for this edition
+    // 4. Fetch attendees for this edition (only id, name, slug)
     const attendeeQuery: Record<string, unknown> = { eventId: event._id };
     if (currentEdition) {
       attendeeQuery.editionId = currentEdition._id;
     }
-    const attendees = await Attendee.find(attendeeQuery)
-      .sort({ name: 1 })
-      .lean();
 
-    // 5. Query media and counts
-    const [mediaItems, totalPhotos, totalVideos, total] = await Promise.all([
+    // 5. Query media, attendees, and counts in parallel
+    const [attendees, mediaItems, counts] = await Promise.all([
+      Attendee.find(attendeeQuery)
+        .select('_id name')
+        .sort({ name: 1 })
+        .lean(),
       Media.find(query)
+        .select('_id type originalFileName mimeType thumbnailKey s3Key createdAt')
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
-      Media.countDocuments({ ...countQuery, type: 'photo' }),
-      Media.countDocuments({ ...countQuery, type: 'video' }),
-      Media.countDocuments(query),
+      Media.aggregate([
+        { $match: countQuery },
+        { $group: { _id: '$type', count: { $sum: 1 } } },
+      ]),
     ]);
+
+    let totalPhotos = 0;
+    let totalVideos = 0;
+    for (const c of counts) {
+      if (c._id === 'photo') totalPhotos = c.count;
+      if (c._id === 'video') totalVideos = c.count;
+    }
+    const total = totalPhotos + totalVideos;
 
     // Generate presigned thumbnail URLs
     const mediaWithUrls = await Promise.all(
@@ -133,30 +149,37 @@ export async function GET(
       mobileBannerUrl = await getPresignedDownloadUrl(mobileS3Key, 3600);
     }
 
-    return NextResponse.json({
-      event: {
-        _id: event._id,
-        name: event.name,
-        slug: event.slug,
-        description: event.description,
-        editionName: currentEdition?.name || null,
-        desktopBannerUrl,
-        mobileBannerUrl,
+    return NextResponse.json(
+      {
+        event: {
+          _id: event._id,
+          name: event.name,
+          slug: event.slug,
+          description: event.description,
+          editionName: currentEdition?.name || null,
+          desktopBannerUrl,
+          mobileBannerUrl,
+        },
+        editions,
+        currentEdition: currentEdition
+          ? {
+              _id: currentEdition._id.toString(),
+              name: currentEdition.name,
+              slug: currentEdition.slug,
+            }
+          : null,
+        attendees,
+        totalPhotos,
+        totalVideos,
+        media: mediaWithUrls,
+        pagination: { page, limit, total, pages: Math.ceil(total / limit) },
       },
-      editions,
-      currentEdition: currentEdition
-        ? {
-            _id: currentEdition._id.toString(),
-            name: currentEdition.name,
-            slug: currentEdition.slug,
-          }
-        : null,
-      attendees,
-      totalPhotos,
-      totalVideos,
-      media: mediaWithUrls,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
-    });
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=120',
+        },
+      }
+    );
   } catch (error) {
     console.error('GET /api/public/gallery/[eventSlug] error:', error);
     return NextResponse.json({ error: 'Failed to load gallery.' }, { status: 500 });
